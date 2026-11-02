@@ -30,4 +30,4 @@ Hackforge 백엔드. Java 25, Spring Boot 4.1.1, Gradle 9.8.1(wrapper), 패키�
 - PR 하나에는 `tasks.md` 작업 1~3개만 담는다. 본문에 이슈와 스펙 링크를 건다.
 - 커밋 접두어: `feat:` `fix:` `docs:` `chore:`
 - 커밋 본문은 diff로 알 수 없는 이유만 한두 줄 쓴다. 뻔한 변경은 제목 한 줄로 끝낸다.
-- 라벨: `feature` `bug` `be` `fe`
+- 라벨: `feature` `bug` `be` `fe` `infra`
