@@ -7,18 +7,4 @@ info:
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
 servers:
   - url: http://127.0.0.1:8080
-paths:
-  /hello:
-    get:
-      summary: 연결 확인용 임시 엔드포인트
-      description: 현재 Spring Security 기본 설정이 적용되어 있어 인증이 필요하다.
-      responses:
-        '200':
-          description: 인사 문자열
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: Hello, Hackforge!
-        '401':
-          description: 인증 안 됨
+paths: {}
