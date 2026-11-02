@@ -1,0 +1,10 @@
+openapi: 3.1.0
+info:
+  title: Hackforge API
+  version: 0.0.1
+  description: >-
+    hackforge-be와 hackforge-fe 사이의 계약.
+    API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
+servers:
+  - url: http://127.0.0.1:8080
+paths: {}
