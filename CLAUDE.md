@@ -11,6 +11,7 @@ Hackforge 백엔드. Java 25, Spring Boot 4.1.1, Gradle 9.8.1(wrapper), 패키�
 ## 명령 (Windows는 `gradlew.bat`)
 
 - 빌드 + 테스트: `./gradlew build` (CI와 같은 명령)
+- API 계약 검사: `npx --yes @redocly/cli@2.65.0 lint openapi.yaml` (CI도 같은 명령을 먼저 돌린다)
 - 테스트만: `./gradlew test`
 - 실행: `./gradlew bootRun` → http://127.0.0.1:8080
 
