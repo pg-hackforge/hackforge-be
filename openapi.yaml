@@ -3,7 +3,7 @@ info:
   title: Hackforge API
   version: 0.1.0
   description: >-
-    hackforge-be와 hackforge-fe 사이의 계약.
+    hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
 
 

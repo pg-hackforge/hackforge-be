@@ -13,9 +13,9 @@
 
 ## 확인 방법
 
-- [ ] API를 바꿨다면 `openapi.yaml` PR이 먼저 머지됐다(이 PR이 `openapi.yaml`만 바꾸면 해당 없음)
-- [ ] DB를 바꿨다면 새 Flyway 파일만 더했다(이미 적용된 파일은 고치지 않음)
-- [ ] 키·토큰·kubeconfig가 없다
+- [ ] API 변경 시 `openapi.yaml` PR 먼저 머지됨 (이 PR이 `openapi.yaml`만 바꾸면 해당 없음)
+- [ ] DB 변경 시 새 Flyway 파일만 추가 (이미 적용된 파일 수정 없음)
+- [ ] secret(키, token, kubeconfig) 없음
 - [ ]
 
 ## 리뷰 포인트 (선택)
