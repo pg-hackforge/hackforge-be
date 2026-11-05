@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      # API 계약 문법 검사. 버전을 고정해 새 규칙이 갑자기 PR을 막지 않게 한다
+      # API spec lint. 새 규칙이 갑자기 PR을 막지 않게 버전 pin
       - run: npx --yes @redocly/cli@2.65.0 lint openapi.yaml
       - uses: actions/setup-java@v5
         with:
