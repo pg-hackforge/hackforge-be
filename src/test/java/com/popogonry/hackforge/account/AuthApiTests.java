@@ -201,6 +201,16 @@ class AuthApiTests {
 	}
 
 	@Test
+	void loginIssuesNewCsrfTokenInSameResponse() throws Exception {
+		signup("hong@example.com", "hong");
+		String before = client.cookie("XSRF-TOKEN");
+
+		client.post("/api/auth/login", loginJson("hong@example.com", "Passw0rd!")).andExpect(status().isOk());
+
+		assertThat(client.cookie("XSRF-TOKEN")).isNotNull().isNotEqualTo(before);
+	}
+
+	@Test
 	void logoutEndsSession() throws Exception {
 		signup("hong@example.com", "hong");
 		client.post("/api/auth/login", loginJson("hong@example.com", "Passw0rd!")).andExpect(status().isOk());

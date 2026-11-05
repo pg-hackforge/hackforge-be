@@ -49,11 +49,11 @@ class AccountController {
 	Me login(@Valid @RequestBody LoginRequest body, HttpServletRequest request, HttpServletResponse response) {
 		User user = accounts.authenticate(body.email(), body.password());
 
-		// 세션 고정 방지: 기존 세션이 있으면 id를 바꾸고, CSRF token도 새로 받게 지운다
+		// 세션 고정 방지: 기존 세션이 있으면 id를 바꾸고, CSRF token도 새로 발급한다
 		if (request.getSession(false) != null) {
 			request.changeSessionId();
 		}
-		csrfTokens.saveToken(null, request, response);
+		csrfTokens.saveToken(csrfTokens.generateToken(request), request, response);
 
 		// 세션에는 사용자 id(principal name)와 역할만 둔다 (ADR 011)
 		Authentication auth = UsernamePasswordAuthenticationToken.authenticated(user.getId().toString(), null,
