@@ -13,6 +13,10 @@ java {
 	}
 }
 
+configurations {
+	mockitoAgent
+}
+
 repositories {
 	mavenCentral()
 }
@@ -45,8 +49,11 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	implementation 'io.kubernetes:client-java:27.0.1'
+	mockitoAgent('org.mockito:mockito-core') { transitive = false }
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// Mockito가 실행 중에 agent를 붙이면 JDK가 경고하고, 이후 JDK에서는 막힘
+	jvmArgs += "-javaagent:${configurations.mockitoAgent.asPath}"
 }
