@@ -27,7 +27,9 @@ Docker Desktop이 켜져 있어야 한다. 테스트는 Testcontainers로, `boot
 - 이름
   - 패키지와 클래스는 entity 이름을 따른다(`user` 패키지, `User`, `UserService`). 문서의 기능 이름("계정")과 달라도 된다.
   - 주입 필드와 parameter는 타입 이름을 camelCase로(`userRepository`, `passwordEncoder`).
-  - 요청·응답은 `<리소스>Request`, `<리소스>Response`로 짓고 파일 하나에 하나씩 둔다. openapi.yaml schema 이름도 같게.
+  - 요청은 `<동작><대상>Request`(`CreateChallengeRequest`). 동작만으로 대상이 분명하고 openapi.yaml 전체에서 이름이 겹치지 않으면 대상 생략(`LoginRequest`).
+  - 응답은 `<리소스>Response`(`UserResponse`).
+  - 요청·응답은 파일 하나에 하나씩 두고, openapi.yaml schema 이름도 같게.
   - 엔티티에서 응답으로 바꾸는 메서드는 `UserResponse.from(user)`.
 - 생성자 주입은 Lombok `@RequiredArgsConstructor`, getter는 `@Getter`. record에는 Lombok을 쓰지 않는다.
 
