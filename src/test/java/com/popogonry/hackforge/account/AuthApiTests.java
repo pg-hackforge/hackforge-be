@@ -140,6 +140,14 @@ class AuthApiTests {
 	}
 
 	@Test
+	void signupRejectsPasswordWithSpace() throws Exception {
+		String json = signupJson("hong@example.com", "hong").replace("Passw0rd!", "Pass w0rd");
+		client.post("/api/auth/signup", json)
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[0].field").value("password"));
+	}
+
+	@Test
 	void signupRejectsMalformedJson() throws Exception {
 		client.post("/api/auth/signup", "{")
 			.andExpect(status().isBadRequest())
