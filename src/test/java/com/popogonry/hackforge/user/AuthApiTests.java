@@ -1,4 +1,4 @@
-package com.popogonry.hackforge.account;
+package com.popogonry.hackforge.user;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -27,18 +27,18 @@ import com.popogonry.hackforge.TestcontainersConfiguration;
 class AuthApiTests {
 
 	@Autowired
-	MockMvc mvc;
+	MockMvc mockMvc;
 
 	@Autowired
-	JdbcTemplate jdbc;
+	JdbcTemplate jdbcTemplate;
 
-	ApiClient client;
+	ApiClient apiClient;
 
 	@BeforeEach
 	void setUp() {
-		jdbc.update("delete from spring_session");
-		jdbc.update("delete from users");
-		client = new ApiClient(mvc);
+		jdbcTemplate.update("delete from spring_session");
+		jdbcTemplate.update("delete from users");
+		apiClient = new ApiClient(mockMvc);
 	}
 
 	static String signupJson(String email, String nickname) {
@@ -55,12 +55,12 @@ class AuthApiTests {
 	}
 
 	void signup(String email, String nickname) throws Exception {
-		client.post("/api/auth/signup", signupJson(email, nickname)).andExpect(status().isCreated());
+		apiClient.post("/api/auth/signup", signupJson(email, nickname)).andExpect(status().isCreated());
 	}
 
 	@Test
 	void signupCreatesPendingLearnerWithLowercaseEmail() throws Exception {
-		client.post("/api/auth/signup", signupJson("Hong@Example.com", "길동_01"))
+		apiClient.post("/api/auth/signup", signupJson("Hong@Example.com", "길동_01"))
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.email").value("hong@example.com"))
 			.andExpect(jsonPath("$.nickname").value("길동_01"))
@@ -74,7 +74,7 @@ class AuthApiTests {
 	void signupStoresBcryptHashAndConsentTime() throws Exception {
 		signup("hong@example.com", "hong");
 
-		var row = jdbc.queryForMap("select password_hash, privacy_agreed_at from users where email = 'hong@example.com'");
+		var row = jdbcTemplate.queryForMap("select password_hash, privacy_agreed_at from users where email = 'hong@example.com'");
 		assertThat((String) row.get("password_hash")).startsWith("$2").doesNotContain("Passw0rd!");
 		assertThat(row.get("privacy_agreed_at")).isNotNull();
 	}
@@ -83,14 +83,14 @@ class AuthApiTests {
 	void signupDoesNotLogIn() throws Exception {
 		signup("hong@example.com", "hong");
 
-		client.get("/api/me").andExpect(status().isUnauthorized());
+		apiClient.get("/api/me").andExpect(status().isUnauthorized());
 	}
 
 	@Test
 	void signupRejectsDuplicateEmailIgnoringCase() throws Exception {
 		signup("hong@example.com", "hong");
 
-		client.post("/api/auth/signup", signupJson("HONG@example.com", "other"))
+		apiClient.post("/api/auth/signup", signupJson("HONG@example.com", "other"))
 			.andExpect(status().isConflict())
 			.andExpect(header().string("Content-Type", containsString("application/problem+json")))
 			.andExpect(jsonPath("$.code").value("EMAIL_TAKEN"));
@@ -100,7 +100,7 @@ class AuthApiTests {
 	void signupRejectsDuplicateNickname() throws Exception {
 		signup("hong@example.com", "hong");
 
-		client.post("/api/auth/signup", signupJson("kim@example.com", "hong"))
+		apiClient.post("/api/auth/signup", signupJson("kim@example.com", "hong"))
 			.andExpect(status().isConflict())
 			.andExpect(jsonPath("$.code").value("NICKNAME_TAKEN"));
 	}
@@ -111,12 +111,12 @@ class AuthApiTests {
 				{"email":"not-an-email","password":"password","name":"","nickname":"a b",
 				 "affiliation":"x","privacyAgreed":false}
 				""";
-		client.post("/api/auth/signup", json)
+		apiClient.post("/api/auth/signup", json)
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
 			.andExpect(jsonPath("$.errors[*].field",
 					containsInAnyOrder("email", "password", "name", "nickname", "privacyAgreed")));
-		assertThat(jdbc.queryForObject("select count(*) from users", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("select count(*) from users", Integer.class)).isZero();
 	}
 
 	@Test
@@ -125,7 +125,7 @@ class AuthApiTests {
 				{"email":"a@example.com","password":"Passw0rd!","name":"%s","nickname":"hong",
 				 "affiliation":"%s","signupNote":"%s","privacyAgreed":true}
 				""".formatted("가".repeat(51), "가".repeat(101), "가".repeat(201));
-		client.post("/api/auth/signup", json)
+		apiClient.post("/api/auth/signup", json)
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.errors[*].field", containsInAnyOrder("name", "affiliation", "signupNote")));
 	}
@@ -134,7 +134,7 @@ class AuthApiTests {
 	void signupRejectsNonAsciiPassword() throws Exception {
 		// bcrypt는 72바이트까지만 처리한다. 한글은 3바이트라 64자 안에서도 넘을 수 있어서 ASCII만 받는다
 		String json = signupJson("hong@example.com", "hong").replace("Passw0rd!", "가".repeat(30) + "a1!");
-		client.post("/api/auth/signup", json)
+		apiClient.post("/api/auth/signup", json)
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.errors[0].field").value("password"));
 	}
@@ -142,14 +142,14 @@ class AuthApiTests {
 	@Test
 	void signupRejectsPasswordWithSpace() throws Exception {
 		String json = signupJson("hong@example.com", "hong").replace("Passw0rd!", "Pass w0rd");
-		client.post("/api/auth/signup", json)
+		apiClient.post("/api/auth/signup", json)
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.errors[0].field").value("password"));
 	}
 
 	@Test
 	void signupRejectsMalformedJson() throws Exception {
-		client.post("/api/auth/signup", "{")
+		apiClient.post("/api/auth/signup", "{")
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 	}
@@ -158,11 +158,11 @@ class AuthApiTests {
 	void loginFailureLooksTheSameForUnknownEmailAndWrongPassword() throws Exception {
 		signup("hong@example.com", "hong");
 
-		String wrongPassword = client.post("/api/auth/login", loginJson("hong@example.com", "Wrong000!"))
+		String wrongPassword = apiClient.post("/api/auth/login", loginJson("hong@example.com", "Wrong000!"))
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"))
 			.andReturn().getResponse().getContentAsString();
-		String unknownEmail = client.post("/api/auth/login", loginJson("nobody@example.com", "Passw0rd!"))
+		String unknownEmail = apiClient.post("/api/auth/login", loginJson("nobody@example.com", "Passw0rd!"))
 			.andExpect(status().isUnauthorized())
 			.andReturn().getResponse().getContentAsString();
 
@@ -173,10 +173,10 @@ class AuthApiTests {
 	void pendingAccountCanLogInAndReadMe() throws Exception {
 		signup("hong@example.com", "hong");
 
-		client.post("/api/auth/login", loginJson("HONG@example.com", "Passw0rd!"))
+		apiClient.post("/api/auth/login", loginJson("HONG@example.com", "Passw0rd!"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.status").value("PENDING"));
-		client.get("/api/me")
+		apiClient.get("/api/me")
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.email").value("hong@example.com"))
 			.andExpect(jsonPath("$.status").value("PENDING"))
@@ -186,13 +186,13 @@ class AuthApiTests {
 	@Test
 	void sessionHoldsOnlyUserIdAndRole() throws Exception {
 		signup("hong@example.com", "hong");
-		Long id = jdbc.queryForObject("select id from users", Long.class);
+		Long id = jdbcTemplate.queryForObject("select id from users", Long.class);
 
-		client.post("/api/auth/login", loginJson("hong@example.com", "Passw0rd!")).andExpect(status().isOk());
+		apiClient.post("/api/auth/login", loginJson("hong@example.com", "Passw0rd!")).andExpect(status().isOk());
 
-		assertThat(jdbc.queryForObject("select principal_name from spring_session", String.class))
+		assertThat(jdbcTemplate.queryForObject("select principal_name from spring_session", String.class))
 			.isEqualTo(id.toString());
-		List<String> attributes = jdbc.queryForList("select attribute_name from spring_session_attributes", String.class);
+		List<String> attributes = jdbcTemplate.queryForList("select attribute_name from spring_session_attributes", String.class);
 		assertThat(attributes).containsExactly("SPRING_SECURITY_CONTEXT");
 	}
 
@@ -200,47 +200,47 @@ class AuthApiTests {
 	void loginIssuesNewSessionId() throws Exception {
 		signup("hong@example.com", "hong");
 		signup("kim@example.com", "kim");
-		client.post("/api/auth/login", loginJson("hong@example.com", "Passw0rd!")).andExpect(status().isOk());
-		String before = client.cookie("SESSION");
+		apiClient.post("/api/auth/login", loginJson("hong@example.com", "Passw0rd!")).andExpect(status().isOk());
+		String before = apiClient.cookie("SESSION");
 
-		client.post("/api/auth/login", loginJson("kim@example.com", "Passw0rd!")).andExpect(status().isOk());
+		apiClient.post("/api/auth/login", loginJson("kim@example.com", "Passw0rd!")).andExpect(status().isOk());
 
-		assertThat(client.cookie("SESSION")).isNotNull().isNotEqualTo(before);
+		assertThat(apiClient.cookie("SESSION")).isNotNull().isNotEqualTo(before);
 	}
 
 	@Test
 	void loginIssuesNewCsrfTokenInSameResponse() throws Exception {
 		signup("hong@example.com", "hong");
-		String before = client.cookie("XSRF-TOKEN");
+		String before = apiClient.cookie("XSRF-TOKEN");
 
-		client.post("/api/auth/login", loginJson("hong@example.com", "Passw0rd!")).andExpect(status().isOk());
+		apiClient.post("/api/auth/login", loginJson("hong@example.com", "Passw0rd!")).andExpect(status().isOk());
 
-		assertThat(client.cookie("XSRF-TOKEN")).isNotNull().isNotEqualTo(before);
+		assertThat(apiClient.cookie("XSRF-TOKEN")).isNotNull().isNotEqualTo(before);
 	}
 
 	@Test
 	void logoutEndsSession() throws Exception {
 		signup("hong@example.com", "hong");
-		client.post("/api/auth/login", loginJson("hong@example.com", "Passw0rd!")).andExpect(status().isOk());
-		String session = client.cookie("SESSION");
+		apiClient.post("/api/auth/login", loginJson("hong@example.com", "Passw0rd!")).andExpect(status().isOk());
+		String session = apiClient.cookie("SESSION");
 
-		client.post("/api/auth/logout", null).andExpect(status().isNoContent());
+		apiClient.post("/api/auth/logout", null).andExpect(status().isNoContent());
 
-		client.setCookie("SESSION", session);
-		client.get("/api/me")
+		apiClient.setCookie("SESSION", session);
+		apiClient.get("/api/me")
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
-		assertThat(jdbc.queryForObject("select count(*) from spring_session", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("select count(*) from spring_session", Integer.class)).isZero();
 	}
 
 	@Test
 	void logoutWithoutLoginIsNoContent() throws Exception {
-		client.post("/api/auth/logout", null).andExpect(status().isNoContent());
+		apiClient.post("/api/auth/logout", null).andExpect(status().isNoContent());
 	}
 
 	@Test
 	void unauthenticatedMeIsProblemAndIssuesReadableCsrfCookie() throws Exception {
-		client.get("/api/me")
+		apiClient.get("/api/me")
 			.andExpect(status().isUnauthorized())
 			.andExpect(header().string("Content-Type", containsString("application/problem+json")))
 			.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
@@ -250,10 +250,10 @@ class AuthApiTests {
 
 	@Test
 	void postWithoutCsrfTokenIsRejected() throws Exception {
-		client.postWithoutCsrf("/api/auth/signup", signupJson("hong@example.com", "hong"))
+		apiClient.postWithoutCsrf("/api/auth/signup", signupJson("hong@example.com", "hong"))
 			.andExpect(status().isForbidden())
 			.andExpect(jsonPath("$.code").value("CSRF_REJECTED"));
-		assertThat(jdbc.queryForObject("select count(*) from users", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("select count(*) from users", Integer.class)).isZero();
 	}
 
 }

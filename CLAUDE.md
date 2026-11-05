@@ -24,6 +24,12 @@ Docker Desktop이 켜져 있어야 한다. 테스트는 Testcontainers로, `boot
 - DB schema는 `src/main/resources/db/migration/V<번호>__<이름>.sql`로만 바꾼다. 머지된 파일은 고치지 않고 새 파일을 추가한다(ADR 010).
 - 의존성은 `implementation` 등 지금 쓰는 configuration을 따르고, Boot BOM이 관리하는 라이브러리는 버전을 생략한다.
 - spec과 코드가 어긋나면 코드를 맞추지 말고 먼저 묻는다. 문서를 먼저 고친다.
+- 이름
+  - 패키지와 클래스는 entity 이름을 따른다(`user` 패키지, `User`, `UserService`). 문서의 기능 이름("계정")과 달라도 된다.
+  - 주입 필드와 parameter는 타입 이름을 camelCase로(`userRepository`, `passwordEncoder`).
+  - 요청·응답은 `<리소스>Request`, `<리소스>Response`로 짓고 파일 하나에 하나씩 둔다. openapi.yaml schema 이름도 같게.
+  - 엔티티에서 응답으로 바꾸는 메서드는 `UserResponse.from(user)`.
+- 생성자 주입은 Lombok `@RequiredArgsConstructor`, getter는 `@Getter`. record에는 Lombok을 쓰지 않는다.
 
 ## 커밋 금지
 

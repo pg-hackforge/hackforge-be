@@ -1,4 +1,4 @@
-package com.popogonry.hackforge.account;
+package com.popogonry.hackforge.user;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -26,11 +26,11 @@ class SessionCookieTests {
 	@LocalServerPort
 	int port;
 
-	final HttpClient http = HttpClient.newHttpClient();
+	final HttpClient httpClient = HttpClient.newHttpClient();
 
 	@Test
 	void loginSetsHttpOnlySameSiteLaxSessionCookie() throws Exception {
-		String xsrf = http.send(HttpRequest.newBuilder(uri("/api/me")).build(), BodyHandlers.discarding())
+		String xsrf = httpClient.send(HttpRequest.newBuilder(uri("/api/me")).build(), BodyHandlers.discarding())
 			.headers()
 			.allValues("Set-Cookie")
 			.stream()
@@ -56,7 +56,7 @@ class SessionCookieTests {
 			.header("Cookie", "XSRF-TOKEN=" + xsrf)
 			.POST(BodyPublishers.ofString(json))
 			.build();
-		return http.send(req, BodyHandlers.discarding());
+		return httpClient.send(req, BodyHandlers.discarding());
 	}
 
 	private URI uri(String path) {

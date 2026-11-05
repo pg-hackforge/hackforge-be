@@ -1,4 +1,4 @@
-package com.popogonry.hackforge.account;
+package com.popogonry.hackforge.user;
 
 import java.time.Instant;
 

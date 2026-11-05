@@ -1,4 +1,4 @@
-package com.popogonry.hackforge.account;
+package com.popogonry.hackforge.user;
 
 import java.time.Instant;
 import java.util.Locale;
@@ -9,25 +9,24 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import com.popogonry.hackforge.account.AccountDtos.SignupRequest;
 import com.popogonry.hackforge.web.ApiException;
 
 import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-class AccountService {
+class UserService {
 
-	private final UserRepository users;
+	private final UserRepository userRepository;
 
-	private final PasswordEncoder encoder;
+	private final PasswordEncoder passwordEncoder;
 
-	User signup(SignupRequest r) {
-		User user = new User(normalize(r.email()), encoder.encode(r.password()), r.name(), r.nickname(),
-				r.affiliation(), r.signupNote(), Instant.now());
+	User signup(SignupRequest request) {
+		User user = new User(normalize(request.email()), passwordEncoder.encode(request.password()), request.name(),
+				request.nickname(), request.affiliation(), request.signupNote(), Instant.now());
 		try {
 			// 중복은 앞서 조회하지 않고 unique constraint로 막는다. 동시에 가입해도 하나만 들어감
-			return users.saveAndFlush(user);
+			return userRepository.saveAndFlush(user);
 		}
 		catch (DataIntegrityViolationException e) {
 			throw duplicate(e);
@@ -36,14 +35,14 @@ class AccountService {
 
 	/** 이메일이 없든 비밀번호가 틀리든 같은 오류. */
 	User authenticate(String email, String password) {
-		return users.findByEmail(normalize(email))
-			.filter(u -> encoder.matches(password, u.getPasswordHash()))
+		return userRepository.findByEmail(normalize(email))
+			.filter(user -> passwordEncoder.matches(password, user.getPasswordHash()))
 			.orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS",
 					"이메일이나 비밀번호가 맞지 않습니다"));
 	}
 
 	User get(long id) {
-		return users.findById(id)
+		return userRepository.findById(id)
 			.orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", "로그인이 필요합니다"));
 	}
 

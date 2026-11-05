@@ -20,25 +20,25 @@ import tools.jackson.databind.json.JsonMapper;
 class SecurityConfig {
 
 	@Bean
-	SecurityFilterChain api(HttpSecurity http, CsrfTokenRepository csrfTokens, JsonMapper json) {
+	SecurityFilterChain api(HttpSecurity http, CsrfTokenRepository csrfTokenRepository, JsonMapper jsonMapper) {
 		http.authorizeHttpRequests(a -> a
 				.requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login").permitAll()
 				.requestMatchers("/actuator/health", "/error").permitAll()
 				.requestMatchers("/api/admin/**").hasRole("ADMIN")
 				.anyRequest().authenticated())
 			// SPA cookie 방식: XSRF-TOKEN cookie(JS에서 읽음) 값을 X-XSRF-TOKEN header로 받는다
-			.csrf(c -> c.spa().csrfTokenRepository(csrfTokens))
+			.csrf(c -> c.spa().csrfTokenRepository(csrfTokenRepository))
 			// 401 받은 요청을 로그인 후 돌아갈 곳으로 세션에 저장하지 않는다. 비로그인 요청마다 세션이 생김
 			.requestCache(r -> r.disable())
 			.logout(l -> l.logoutUrl("/api/auth/logout")
 				.logoutSuccessHandler((req, res, auth) -> res.setStatus(HttpStatus.NO_CONTENT.value())))
 			.exceptionHandling(e -> e
 				.authenticationEntryPoint((req, res, ex) -> new Problem("로그인이 필요합니다", 401, "UNAUTHENTICATED", null)
-					.write(res, json))
+					.write(res, jsonMapper))
 				.accessDeniedHandler((req, res, ex) -> (ex instanceof CsrfException
 						? new Problem("CSRF token이 없거나 맞지 않습니다", 403, "CSRF_REJECTED", null)
 						: new Problem("권한이 없습니다", 403, "FORBIDDEN", null))
-					.write(res, json)));
+					.write(res, jsonMapper)));
 		return http.build();
 	}
 

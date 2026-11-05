@@ -19,11 +19,11 @@ public record Problem(String title, int status, String code, List<FieldError> er
 	}
 
 	/** Spring MVC 밖(security filter)에서 쓸 때. */
-	public void write(HttpServletResponse response, JsonMapper json) throws IOException {
+	public void write(HttpServletResponse response, JsonMapper jsonMapper) throws IOException {
 		response.setStatus(status);
 		response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
 		response.setCharacterEncoding("UTF-8");
-		json.writeValue(response.getWriter(), this);
+		jsonMapper.writeValue(response.getWriter(), this);
 	}
 
 }

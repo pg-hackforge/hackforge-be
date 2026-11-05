@@ -1,4 +1,4 @@
-package com.popogonry.hackforge.account;
+package com.popogonry.hackforge.user;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 class ApiClient {
 
-	private final MockMvc mvc;
+	private final MockMvc mockMvc;
 	private final Map<String, String> cookies = new HashMap<>();
 
 	ResultActions get(String path) throws Exception {
@@ -51,7 +51,7 @@ class ApiClient {
 
 	private ResultActions send(MockHttpServletRequestBuilder req) throws Exception {
 		cookies.forEach((k, v) -> req.cookie(new Cookie(k, v)));
-		ResultActions result = mvc.perform(req);
+		ResultActions result = mockMvc.perform(req);
 		remember(result.andReturn().getResponse());
 		return result;
 	}
