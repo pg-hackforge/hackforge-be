@@ -12,15 +12,14 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
+import lombok.RequiredArgsConstructor;
+
 /** 브라우저처럼 cookie를 들고 다니고, GET이 아닌 요청에는 XSRF-TOKEN cookie 값을 header로 넣는다. */
+@RequiredArgsConstructor
 class ApiClient {
 
 	private final MockMvc mvc;
 	private final Map<String, String> cookies = new HashMap<>();
-
-	ApiClient(MockMvc mvc) {
-		this.mvc = mvc;
-	}
 
 	ResultActions get(String path) throws Exception {
 		return send(MockMvcRequestBuilders.get(path));

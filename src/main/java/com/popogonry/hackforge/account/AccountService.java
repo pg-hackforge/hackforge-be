@@ -12,17 +12,15 @@ import org.springframework.stereotype.Service;
 import com.popogonry.hackforge.account.AccountDtos.SignupRequest;
 import com.popogonry.hackforge.web.ApiException;
 
+import lombok.RequiredArgsConstructor;
+
 @Service
+@RequiredArgsConstructor
 class AccountService {
 
 	private final UserRepository users;
 
 	private final PasswordEncoder encoder;
-
-	AccountService(UserRepository users, PasswordEncoder encoder) {
-		this.users = users;
-		this.encoder = encoder;
-	}
 
 	User signup(SignupRequest r) {
 		User user = new User(normalize(r.email()), encoder.encode(r.password()), r.name(), r.nickname(),

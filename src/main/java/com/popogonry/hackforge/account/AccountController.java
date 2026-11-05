@@ -25,7 +25,10 @@ import com.popogonry.hackforge.account.AccountDtos.LoginRequest;
 import com.popogonry.hackforge.account.AccountDtos.Me;
 import com.popogonry.hackforge.account.AccountDtos.SignupRequest;
 
+import lombok.RequiredArgsConstructor;
+
 @RestController
+@RequiredArgsConstructor
 class AccountController {
 
 	private final AccountService accounts;
@@ -33,11 +36,6 @@ class AccountController {
 	private final CsrfTokenRepository csrfTokens;
 
 	private final SecurityContextRepository contexts = new HttpSessionSecurityContextRepository();
-
-	AccountController(AccountService accounts, CsrfTokenRepository csrfTokens) {
-		this.accounts = accounts;
-		this.csrfTokens = csrfTokens;
-	}
 
 	@PostMapping("/api/auth/signup")
 	@ResponseStatus(HttpStatus.CREATED)

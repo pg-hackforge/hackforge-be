@@ -15,7 +15,7 @@ class ApiExceptionHandler {
 
 	@ExceptionHandler
 	ResponseEntity<Problem> api(ApiException e) {
-		return respond(e.status(), e.toProblem());
+		return respond(e.getStatus(), e.toProblem());
 	}
 
 	@ExceptionHandler
