@@ -35,3 +35,12 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### secret ###
+.env
+.env.*
+*.pem
+*.key
+*.p12
+kubeconfig*
+*.kubeconfig

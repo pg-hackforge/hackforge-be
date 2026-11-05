@@ -1,0 +1,15 @@
+# 개발용 DB. ./gradlew bootRun 하면 spring-boot-docker-compose가 자동으로 띄우고 접속 정보도 읽는다
+services:
+  postgres:
+    image: postgres:18 # Testcontainers(TestcontainersConfiguration)와 같은 major
+    environment:
+      POSTGRES_DB: hackforge
+      POSTGRES_USER: hackforge
+      POSTGRES_PASSWORD: hackforge # 로컬 전용. 127.0.0.1에만 열림
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+
+volumes:
+  postgres-data:

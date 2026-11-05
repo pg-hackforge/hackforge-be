@@ -10,14 +10,18 @@ Hackforge 백엔드. Java 25, Spring Boot 4.1.1, Gradle 9.8.1(wrapper), 패키�
 
 ## 명령 (Windows는 `gradlew.bat`)
 
+Docker Desktop이 켜져 있어야 한다. 테스트는 Testcontainers로, `bootRun`은 `compose.yaml`로 PostgreSQL을 띄운다.
+
 - 빌드 + 테스트: `./gradlew build` (CI와 같은 명령)
-- API 계약 검사: `npx --yes @redocly/cli@2.65.0 lint openapi.yaml` (CI도 같은 명령을 먼저 돌린다)
+- API spec lint: `npx --yes @redocly/cli@2.65.0 lint openapi.yaml` (CI도 같은 명령을 먼저 돌린다)
 - 테스트만: `./gradlew test`
-- 실행: `./gradlew bootRun` → http://127.0.0.1:8080
+- 실행: `./gradlew bootRun` → http://127.0.0.1:8080 (dev DB 컨테이너도 자동으로 시작, 앱 종료 시 정지)
+- dev DB 접속: `docker compose exec postgres psql -U hackforge`
 
 ## 작업 규칙
 
 - `tasks.md` 작업을 한 번에 하나씩 구현하고 테스트도 같이 쓴다.
+- DB schema는 `src/main/resources/db/migration/V<번호>__<이름>.sql`로만 바꾼다. 머지된 파일은 고치지 않고 새 파일을 추가한다(ADR 010).
 - 의존성은 `implementation` 등 지금 쓰는 configuration을 따르고, Boot BOM이 관리하는 라이브러리는 버전을 생략한다.
 - spec과 코드가 어긋나면 코드를 맞추지 말고 먼저 묻는다. 문서를 먼저 고친다.
 
