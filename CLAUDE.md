@@ -31,6 +31,7 @@ Docker Desktop이 켜져 있어야 한다. 테스트는 Testcontainers로, `boot
   - 응답은 `<리소스>Response`(`UserResponse`).
   - 요청·응답은 파일 하나에 하나씩 두고, openapi.yaml schema 이름도 같게.
   - 엔티티에서 응답으로 바꾸는 메서드는 `UserResponse.from(user)`.
+- 오류는 `throw new ApiException(ErrorCode.X)`. 새 코드는 openapi.yaml `Problem.code` enum에 먼저 추가하고 `ErrorCode`에 상태와 메시지를 둔다(`ErrorCodeTests`가 spec에 있는지 확인).
 - 생성자 주입은 Lombok `@RequiredArgsConstructor`, getter는 `@Getter`. record에는 Lombok을 쓰지 않는다.
 
 ## 커밋 금지

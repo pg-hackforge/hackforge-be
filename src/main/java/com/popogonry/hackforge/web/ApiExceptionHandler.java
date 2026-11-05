@@ -2,7 +2,6 @@ package com.popogonry.hackforge.web;
 
 import java.util.List;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -15,7 +14,7 @@ class ApiExceptionHandler {
 
 	@ExceptionHandler
 	ResponseEntity<Problem> api(ApiException e) {
-		return respond(e.getStatus(), e.toProblem());
+		return respond(Problem.of(e.getErrorCode()));
 	}
 
 	@ExceptionHandler
@@ -25,16 +24,16 @@ class ApiExceptionHandler {
 			.stream()
 			.map(f -> new Problem.FieldError(f.getField(), f.getDefaultMessage()))
 			.toList();
-		return respond(HttpStatus.BAD_REQUEST, new Problem("입력값이 규칙에 맞지 않습니다", 400, "VALIDATION_FAILED", errors));
+		return respond(Problem.of(ErrorCode.VALIDATION_FAILED, errors));
 	}
 
 	@ExceptionHandler
 	ResponseEntity<Problem> unreadable(HttpMessageNotReadableException e) {
-		return respond(HttpStatus.BAD_REQUEST, new Problem("요청 본문을 읽을 수 없습니다", 400, "VALIDATION_FAILED", null));
+		return respond(Problem.of(ErrorCode.VALIDATION_FAILED));
 	}
 
-	private static ResponseEntity<Problem> respond(HttpStatus status, Problem problem) {
-		return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problem);
+	private static ResponseEntity<Problem> respond(Problem problem) {
+		return ResponseEntity.status(problem.status()).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problem);
 	}
 
 }

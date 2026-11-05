@@ -1,25 +1,16 @@
 package com.popogonry.hackforge.web;
 
-import org.springframework.http.HttpStatus;
-
 import lombok.Getter;
 
-/** openapi.yaml `Problem.code`로 응답하는 오류. */
+/** openapi.yaml `Problem`으로 응답하는 오류. */
+@Getter
 public class ApiException extends RuntimeException {
 
-	@Getter
-	private final HttpStatus status;
+	private final ErrorCode errorCode;
 
-	private final String code;
-
-	public ApiException(HttpStatus status, String code, String title) {
-		super(title);
-		this.status = status;
-		this.code = code;
-	}
-
-	public Problem toProblem() {
-		return new Problem(getMessage(), status.value(), code, null);
+	public ApiException(ErrorCode errorCode) {
+		super(errorCode.getTitle());
+		this.errorCode = errorCode;
 	}
 
 }

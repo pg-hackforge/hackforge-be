@@ -12,6 +12,7 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 
+import com.popogonry.hackforge.web.ErrorCode;
 import com.popogonry.hackforge.web.Problem;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -33,11 +34,11 @@ class SecurityConfig {
 			.logout(l -> l.logoutUrl("/api/auth/logout")
 				.logoutSuccessHandler((req, res, auth) -> res.setStatus(HttpStatus.NO_CONTENT.value())))
 			.exceptionHandling(e -> e
-				.authenticationEntryPoint((req, res, ex) -> new Problem("로그인이 필요합니다", 401, "UNAUTHENTICATED", null)
+				.authenticationEntryPoint((req, res, ex) -> Problem.of(ErrorCode.UNAUTHENTICATED)
 					.write(res, jsonMapper))
 				.accessDeniedHandler((req, res, ex) -> (ex instanceof CsrfException
-						? new Problem("CSRF token이 없거나 맞지 않습니다", 403, "CSRF_REJECTED", null)
-						: new Problem("권한이 없습니다", 403, "FORBIDDEN", null))
+						? Problem.of(ErrorCode.CSRF_REJECTED)
+						: Problem.of(ErrorCode.FORBIDDEN))
 					.write(res, jsonMapper)));
 		return http.build();
 	}

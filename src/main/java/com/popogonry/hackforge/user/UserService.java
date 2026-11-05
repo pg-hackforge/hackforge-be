@@ -5,11 +5,11 @@ import java.util.Locale;
 
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.popogonry.hackforge.web.ApiException;
+import com.popogonry.hackforge.web.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 
@@ -37,13 +37,12 @@ class UserService {
 	User authenticate(String email, String password) {
 		return userRepository.findByEmail(normalize(email))
 			.filter(user -> passwordEncoder.matches(password, user.getPasswordHash()))
-			.orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS",
-					"이메일이나 비밀번호가 맞지 않습니다"));
+			.orElseThrow(() -> new ApiException(ErrorCode.INVALID_CREDENTIALS));
 	}
 
 	User get(long id) {
 		return userRepository.findById(id)
-			.orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", "로그인이 필요합니다"));
+			.orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
 	}
 
 	private static String normalize(String email) {
@@ -53,10 +52,10 @@ class UserService {
 	private static RuntimeException duplicate(DataIntegrityViolationException e) {
 		String constraint = e.getCause() instanceof ConstraintViolationException c ? c.getConstraintName() : null;
 		if ("users_email_uk".equals(constraint)) {
-			return new ApiException(HttpStatus.CONFLICT, "EMAIL_TAKEN", "이미 가입된 이메일입니다");
+			return new ApiException(ErrorCode.EMAIL_TAKEN);
 		}
 		if ("users_nickname_uk".equals(constraint)) {
-			return new ApiException(HttpStatus.CONFLICT, "NICKNAME_TAKEN", "이미 사용 중인 닉네임입니다");
+			return new ApiException(ErrorCode.NICKNAME_TAKEN);
 		}
 		return e;
 	}
