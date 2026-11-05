@@ -184,6 +184,17 @@ class AuthApiTests {
 	}
 
 	@Test
+	void meIsUnauthenticatedWhenSessionUserNoLongerExists() throws Exception {
+		signup("hong@example.com", "hong");
+		apiClient.post("/api/auth/login", loginJson("hong@example.com", "Passw0rd!")).andExpect(status().isOk());
+		jdbcTemplate.update("delete from users");
+
+		apiClient.get("/api/me")
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+	}
+
+	@Test
 	void sessionHoldsOnlyUserIdAndRole() throws Exception {
 		signup("hong@example.com", "hong");
 		Long id = jdbcTemplate.queryForObject("select id from users", Long.class);
