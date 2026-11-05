@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.1.0
+  version: 0.1.1
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -68,7 +68,7 @@ paths:
       tags: [auth]
       summary: 로그인
       description: >-
-        성공하면 세션 쿠키를 새로 발급한다(세션 고정 방지).
+        성공하면 세션 쿠키와 `XSRF-TOKEN` 쿠키를 새로 발급한다(세션 고정 방지). 이후 요청은 새 CSRF 값을 쓴다.
         비밀번호를 틀린 횟수는 로그인과 내 비밀번호 변경(`PUT /api/me/password`)을 합쳐 계정마다 센다.
         5번 연속 틀리면 15분 잠그고, 잠긴 동안은 비밀번호를 확인하지 않는다. 성공하면 횟수를 0으로 되돌린다.
         로그인 실패로 잠겨도 이미 로그인한 세션은 끊지 않는다(남이 일부러 틀려 사용자를 쫓아낼 수 없게).
@@ -372,10 +372,12 @@ components:
       maxLength: 254
     Password:
       type: string
-      description: 8~64자, 영문·숫자·특수문자를 각각 하나 이상
+      description: >-
+        8~64자, 영문·숫자·특수문자를 각각 하나 이상. ASCII(공백 제외 키보드 기호)만 받는다.
+        bcrypt는 72바이트까지만 처리하는데 한글은 글자당 3바이트라 64자 안에서도 넘을 수 있다
       minLength: 8
       maxLength: 64
-      pattern: '^(?=.*[A-Za-z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,64}$'
+      pattern: '^(?=.*[A-Za-z])(?=.*[0-9])(?=.*[^A-Za-z0-9])[\x21-\x7E]{8,64}$'
     UserRole:
       type: string
       enum: [LEARNER, AUTHOR, ADMIN]
