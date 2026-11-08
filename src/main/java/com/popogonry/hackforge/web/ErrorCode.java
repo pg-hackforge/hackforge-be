@@ -17,7 +17,9 @@ public enum ErrorCode {
 	ACCOUNT_LOCKED(HttpStatus.TOO_MANY_REQUESTS, "로그인을 여러 번 실패해 계정이 잠시 잠겼습니다"),
 	UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다"),
 	FORBIDDEN(HttpStatus.FORBIDDEN, "권한이 없습니다"),
-	CSRF_REJECTED(HttpStatus.FORBIDDEN, "CSRF token이 없거나 맞지 않습니다");
+	CSRF_REJECTED(HttpStatus.FORBIDDEN, "CSRF token이 없거나 맞지 않습니다"),
+	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "없는 계정입니다"),
+	INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "지금 상태에서는 할 수 없는 처리입니다");
 
 	private final HttpStatus status;
 
