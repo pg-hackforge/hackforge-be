@@ -17,23 +17,23 @@ import org.springframework.session.SessionRepository;
 class HackforgeApplicationTests {
 
 	@Autowired
-	JdbcTemplate jdbc;
+	JdbcTemplate jdbcTemplate;
 
 	@Autowired
-	SessionRepository<? extends Session> sessions;
+	SessionRepository<? extends Session> sessionRepository;
 
 	@Test
 	void migrationCreatesSessionTables() {
-		Integer applied = jdbc.queryForObject(
+		Integer applied = jdbcTemplate.queryForObject(
 				"select count(*) from flyway_schema_history where version = '1' and success", Integer.class);
 		assertThat(applied).isEqualTo(1);
-		assertThat(jdbc.queryForObject("select count(*) from spring_session", Integer.class)).isZero();
-		assertThat(jdbc.queryForObject("select count(*) from spring_session_attributes", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("select count(*) from spring_session", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("select count(*) from spring_session_attributes", Integer.class)).isZero();
 	}
 
 	@Test
 	void sessionIdleTimeoutIs30Minutes() {
-		assertThat(sessions.createSession().getMaxInactiveInterval()).isEqualTo(Duration.ofMinutes(30));
+		assertThat(sessionRepository.createSession().getMaxInactiveInterval()).isEqualTo(Duration.ofMinutes(30));
 	}
 
 }

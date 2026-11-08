@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.1.1
+  version: 0.1.2
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -51,7 +51,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Me'
+                $ref: '#/components/schemas/UserResponse'
         '400':
           $ref: '#/components/responses/ValidationFailed'
         '403':
@@ -88,7 +88,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Me'
+                $ref: '#/components/schemas/UserResponse'
         '400':
           $ref: '#/components/responses/ValidationFailed'
         '401':
@@ -131,7 +131,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Me'
+                $ref: '#/components/schemas/UserResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
   /api/me/password:
@@ -189,7 +189,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/AdminUser'
+                  $ref: '#/components/schemas/AdminUserResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
@@ -208,7 +208,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdminUser'
+                $ref: '#/components/schemas/AdminUserResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
@@ -231,7 +231,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdminUser'
+                $ref: '#/components/schemas/AdminUserResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
@@ -262,7 +262,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdminUser'
+                $ref: '#/components/schemas/AdminUserResponse'
         '400':
           $ref: '#/components/responses/ValidationFailed'
         '401':
@@ -291,7 +291,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TemporaryPassword'
+                $ref: '#/components/schemas/TemporaryPasswordResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
@@ -438,7 +438,7 @@ components:
       properties:
         role:
           $ref: '#/components/schemas/UserRole'
-    Me:
+    UserResponse:
       type: object
       required: [id, email, name, nickname, affiliation, role, status, createdAt]
       properties:
@@ -460,15 +460,15 @@ components:
         createdAt:
           type: string
           format: date-time
-    AdminUser:
-      description: 관리자가 승인할 때 보는 정보. `Me`에 가입 메모를 더한다
+    AdminUserResponse:
+      description: 관리자가 승인할 때 보는 정보. `UserResponse`에 가입 메모를 더한다
       allOf:
-        - $ref: '#/components/schemas/Me'
+        - $ref: '#/components/schemas/UserResponse'
         - type: object
           properties:
             signupNote:
               type: [string, 'null']
-    TemporaryPassword:
+    TemporaryPasswordResponse:
       type: object
       required: [temporaryPassword]
       properties:
