@@ -9,6 +9,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.popogonry.hackforge.user.domain.User;
 import com.popogonry.hackforge.user.dto.SignupRequest;
@@ -20,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class UserService {
 
 	static final int MAX_FAILED_LOGINS = 5;
@@ -30,6 +32,7 @@ public class UserService {
 
 	private final PasswordEncoder passwordEncoder;
 
+	@Transactional
 	public User signup(SignupRequest request) {
 		User user = new User(normalize(request.email()), passwordEncoder.encode(request.password()), request.name(),
 				request.nickname(), request.affiliation(), request.signupNote(), Instant.now());
@@ -45,7 +48,9 @@ public class UserService {
 	/**
 	 * 이메일이 없든 비밀번호가 틀리든 같은 오류. 같은 계정으로 5번 연속 틀리면 15분 잠근다(ADR 011).
 	 * 잠긴 동안은 비밀번호를 확인하지 않는다. 이미 로그인한 세션은 건드리지 않는다.
+	 * 실패 응답(ApiException)을 던져도 늘린 실패 횟수는 commit해야 해서 rollback하지 않는다.
 	 */
+	@Transactional(noRollbackFor = ApiException.class)
 	public User authenticate(String email, String password) {
 		User user = userRepository.findByEmail(normalize(email))
 			.orElseThrow(() -> new ApiException(ErrorCode.INVALID_CREDENTIALS));
