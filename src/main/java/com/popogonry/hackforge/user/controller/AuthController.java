@@ -1,4 +1,4 @@
-package com.popogonry.hackforge.user;
+package com.popogonry.hackforge.user.controller;
 
 import java.util.List;
 
@@ -19,6 +19,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.popogonry.hackforge.user.UserService;
+import com.popogonry.hackforge.user.domain.User;
+import com.popogonry.hackforge.user.dto.LoginRequest;
+import com.popogonry.hackforge.user.dto.SignupRequest;
+import com.popogonry.hackforge.user.dto.UserResponse;
 
 import lombok.RequiredArgsConstructor;
 

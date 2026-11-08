@@ -1,4 +1,4 @@
-package com.popogonry.hackforge.user;
+package com.popogonry.hackforge.user.domain;
 
 import java.time.Instant;
 
@@ -47,7 +47,7 @@ public class User {
 	private Instant createdAt;
 
 	/** 가입. 승인 대기·학습자로 만든다. 동의 여부는 요청 검증에서 확인한 뒤 호출한다. */
-	User(String email, String passwordHash, String name, String nickname, String affiliation, String signupNote,
+	public User(String email, String passwordHash, String name, String nickname, String affiliation, String signupNote,
 			Instant now) {
 		this.email = email;
 		this.passwordHash = passwordHash;
