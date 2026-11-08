@@ -24,7 +24,7 @@ Docker Desktop이 켜져 있어야 한다. 테스트는 Testcontainers로, `boot
 - DB schema는 `src/main/resources/db/migration/V<번호>__<이름>.sql`로만 바꾼다. 머지된 파일은 고치지 않고 새 파일을 추가한다(ADR 010).
 - 의존성은 `implementation` 등 지금 쓰는 configuration을 따르고, Boot BOM이 관리하는 라이브러리는 버전을 생략한다.
 - spec과 코드가 어긋나면 코드를 맞추지 말고 먼저 묻는다. 문서를 먼저 고친다.
-- 패키지는 도메인으로 나눈다(`user`). 도메인 안에서 같은 역할 파일이 2개 이상이면 하위 패키지로 묶고(`controller`, `dto`, `domain`: entity와 enum), 1개면 도메인 패키지 바로 아래 둔다(`UserService`, `UserRepository`).
+- 패키지는 도메인으로 나누고(`user`), 그 안은 역할 폴더로 나눈다: `controller`, `service`, `repository`, `dto`, `domain`(entity와 enum). 파일이 1개여도 같은 폴더에 둔다. 해당 파일이 없는 폴더는 만들지 않는다.
 - 이름
   - 패키지와 클래스는 entity 이름을 따른다(`user` 패키지, `User`, `UserService`). 문서의 기능 이름("계정")과 달라도 된다.
   - 주입 필드와 parameter는 타입 이름을 camelCase로(`userRepository`, `passwordEncoder`).

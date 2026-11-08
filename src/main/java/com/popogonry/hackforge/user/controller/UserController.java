@@ -4,8 +4,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.popogonry.hackforge.user.UserService;
 import com.popogonry.hackforge.user.dto.UserResponse;
+import com.popogonry.hackforge.user.service.UserService;
 
 import lombok.RequiredArgsConstructor;
 

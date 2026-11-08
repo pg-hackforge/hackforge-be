@@ -1,4 +1,4 @@
-package com.popogonry.hackforge.user;
+package com.popogonry.hackforge.user.service;
 
 import java.time.Instant;
 import java.util.Locale;
@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import com.popogonry.hackforge.user.domain.User;
 import com.popogonry.hackforge.user.dto.SignupRequest;
+import com.popogonry.hackforge.user.repository.UserRepository;
 import com.popogonry.hackforge.web.ApiException;
 import com.popogonry.hackforge.web.ErrorCode;
 
