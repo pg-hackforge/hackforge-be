@@ -14,7 +14,10 @@ class ApiExceptionHandler {
 
 	@ExceptionHandler
 	ResponseEntity<Problem> api(ApiException e) {
-		return respond(Problem.of(e.getErrorCode()));
+		return ResponseEntity.status(e.getErrorCode().getStatus())
+			.headers(e.getHeaders())
+			.contentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.body(Problem.of(e.getErrorCode()));
 	}
 
 	@ExceptionHandler

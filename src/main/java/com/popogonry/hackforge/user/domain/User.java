@@ -46,6 +46,16 @@ public class User {
 
 	private Instant createdAt;
 
+	/** 연속 로그인 실패 횟수. 잠길 때와 로그인에 성공할 때 0으로 돌아간다. */
+	private int failedLoginCount;
+
+	/** 이 시각 전까지 로그인 차단. */
+	private Instant lockedUntil;
+
+	public boolean isLockedAt(Instant now) {
+		return lockedUntil != null && lockedUntil.isAfter(now);
+	}
+
 	/** 가입. 승인 대기·학습자로 만든다. 동의 여부는 요청 검증에서 확인한 뒤 호출한다. */
 	public User(String email, String passwordHash, String name, String nickname, String affiliation, String signupNote,
 			Instant now) {
