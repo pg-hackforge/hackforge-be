@@ -25,6 +25,10 @@ class SecurityConfig {
 		http.authorizeHttpRequests(a -> a
 				.requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login").permitAll()
 				.requestMatchers("/actuator/health", "/error").permitAll()
+				// Swagger UI(bootRun 전용)와 그 화면이 읽는 spec. 운영 jar에는 Swagger UI가 없어서 spec 파일만 열림
+				.requestMatchers(HttpMethod.GET, "/openapi.yaml", "/swagger-ui.html", "/swagger-ui/**",
+						"/v3/api-docs/swagger-config")
+					.permitAll()
 				.requestMatchers("/api/admin/**").hasRole("ADMIN")
 				.anyRequest().authenticated())
 			// SPA cookie 방식: XSRF-TOKEN cookie(JS에서 읽음) 값을 X-XSRF-TOKEN header로 받는다

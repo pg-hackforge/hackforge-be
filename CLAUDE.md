@@ -17,6 +17,7 @@ Docker Desktop이 켜져 있어야 한다. 테스트는 Testcontainers로, `boot
 - 테스트만: `./gradlew test`
 - 실행: `./gradlew bootRun` → http://127.0.0.1:8080 (dev DB 컨테이너도 자동으로 시작, 앱 종료 시 정지)
 - dev DB 접속: `docker compose exec postgres psql -U hackforge`
+- API 손으로 확인: `bootRun` 중에 http://127.0.0.1:8080/swagger-ui.html (`openapi.yaml`을 그대로 보여 줌. `localhost`로 열면 요청 주소와 origin이 달라 cookie·CSRF가 안 붙음)
 
 ## 작업 규칙
 
