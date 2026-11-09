@@ -1,0 +1,1496 @@
+{
+  "info": {
+    "_postman_id": "16e57494-95a7-5f25-ac83-3ff1b3d6e3e2",
+    "name": "Hackforge API",
+    "description": "hackforge-be 시연·수동 확인용. 폴더 순서대로 보내거나 Runner로 돌린다.\n\n준비: Docker Desktop을 켜고 be 폴더에서 ./gradlew bootRun. 주소는 127.0.0.1로 통일한다(localhost와 섞으면 cookie가 따로 저장됨).\nCSRF: 컬렉션 스크립트가 XSRF-TOKEN cookie 값을 X-XSRF-TOKEN header에 자동으로 넣는다.\n처음부터 다시 하려면: docker compose exec postgres psql -U hackforge -c \"delete from spring_session; delete from users;\"\nAPI 정의는 openapi.yaml이 기준이다.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// 데이터를 바꾸는 요청(POST 등)에 CSRF token을 header로 넣는다.",
+          "// token이 아직 없으면(처음, 로그아웃 직후) GET 한 번으로 받아 온다.",
+          "if (pm.request.method !== 'GET') {",
+          "  const token = pm.collectionVariables.get('xsrf');",
+          "  if (token) {",
+          "    pm.request.headers.upsert({ key: 'X-XSRF-TOKEN', value: token });",
+          "  } else {",
+          "    pm.sendRequest(pm.collectionVariables.get('baseUrl') + '/api/me', (err, res) => {",
+          "      const c = res.headers.all().find(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('XSRF-TOKEN='));",
+          "      const t = c ? c.value.split(';')[0].substring('XSRF-TOKEN='.length) : '';",
+          "      pm.collectionVariables.set('xsrf', t);",
+          "      pm.request.headers.upsert({ key: 'X-XSRF-TOKEN', value: t });",
+          "    });",
+          "  }",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// 응답에 새 XSRF-TOKEN이 오면 저장하고, 지워지면(로그아웃) 비운다. 로그인하면 token이 바뀐다.",
+          "pm.response.headers.each(h => {",
+          "  if (h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('XSRF-TOKEN=')) {",
+          "    const v = h.value.split(';')[0].substring('XSRF-TOKEN='.length);",
+          "    if (v && !/Max-Age=0/i.test(h.value)) {",
+          "      pm.collectionVariables.set('xsrf', v);",
+          "    } else {",
+          "      pm.collectionVariables.unset('xsrf');",
+          "    }",
+          "  }",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8080"
+    },
+    {
+      "key": "password",
+      "value": "Passw0rd!",
+      "description": "시연용. 실제 계정 비밀번호를 넣지 않는다"
+    },
+    {
+      "key": "learnerEmail",
+      "value": "learner@example.com"
+    },
+    {
+      "key": "learnerNickname",
+      "value": "learner"
+    },
+    {
+      "key": "lockEmail",
+      "value": "locked@example.com"
+    },
+    {
+      "key": "lockNickname",
+      "value": "locked"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@example.com"
+    },
+    {
+      "key": "adminNickname",
+      "value": "admin"
+    },
+    {
+      "key": "learnerId",
+      "value": ""
+    },
+    {
+      "key": "adminId",
+      "value": ""
+    },
+    {
+      "key": "lockId",
+      "value": ""
+    },
+    {
+      "key": "tempPassword",
+      "value": "",
+      "description": "6번 폴더에서 발급받아 채워짐"
+    },
+    {
+      "key": "xsrf",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. 가입",
+      "description": "가입하면 승인 대기(PENDING)·학습자(LEARNER)로 만들어진다. 가입만으로는 로그인되지 않는다.",
+      "item": [
+        {
+          "name": "가입",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.test('.status = PENDING', () => pm.expect(pm.response.json().status).to.eql(\"PENDING\"));",
+                  "pm.test('.role = LEARNER', () => pm.expect(pm.response.json().role).to.eql(\"LEARNER\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "signup"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{learnerEmail}}\",\n  \"password\": \"{{password}}\",\n  \"name\": \"홍길동\",\n  \"nickname\": \"{{learnerNickname}}\",\n  \"affiliation\": \"OO대 정보보호학과\",\n  \"signupNote\": \"웹보안 3분반\",\n  \"privacyAgreed\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "같은 이메일로 다시 가입 (대소문자 달라도 같은 이메일)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('code EMAIL_TAKEN', () => pm.expect(pm.response.json().code).to.eql('EMAIL_TAKEN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "signup"
+              ]
+            },
+            "description": "이메일은 소문자로 저장하므로 대소문자만 다른 이메일도 중복이다.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{learnerEmail}}\",\n  \"password\": \"{{password}}\",\n  \"name\": \"홍길동\",\n  \"nickname\": \"other_nick\",\n  \"affiliation\": \"OO대 정보보호학과\",\n  \"signupNote\": \"웹보안 3분반\",\n  \"privacyAgreed\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "규칙 위반 (필드별 사유)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('code VALIDATION_FAILED', () => pm.expect(pm.response.json().code).to.eql('VALIDATION_FAILED'));",
+                  "pm.test('필드별 errors', () => pm.expect(pm.response.json().errors.length).to.be.above(3));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "signup"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"not-an-email\",\n  \"password\": \"short\",\n  \"name\": \"\",\n  \"nickname\": \"a b\",\n  \"affiliation\": \"OO대 정보보호학과\",\n  \"signupNote\": \"웹보안 3분반\",\n  \"privacyAgreed\": false\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. 로그인과 로그아웃",
+      "description": "승인 전(PENDING)이어도 로그인은 된다. 화면은 상태를 보고 안내만 한다(ADR 011).",
+      "item": [
+        {
+          "name": "로그인",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.status = PENDING', () => pm.expect(pm.response.json().status).to.eql(\"PENDING\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{learnerEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "내 정보",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.email = {{learnerEmail}}', () => pm.expect(pm.response.json().email).to.eql(pm.collectionVariables.get('learnerEmail')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "로그아웃",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "로그아웃 뒤 내 정보",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('code UNAUTHENTICATED', () => pm.expect(pm.response.json().code).to.eql('UNAUTHENTICATED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. 로그인 잠금",
+      "description": "같은 계정으로 5번 연속 틀리면 15분 잠긴다. 5번째 응답부터 429, Retry-After에 남은 초.\n다시 시연하려면: docker compose exec postgres psql -U hackforge -c \"update users set locked_until = null, failed_login_count = 0\"",
+      "item": [
+        {
+          "name": "잠금 시연용 계정 가입",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "signup"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"{{password}}\",\n  \"name\": \"홍길동\",\n  \"nickname\": \"{{lockNickname}}\",\n  \"affiliation\": \"OO대 정보보호학과\",\n  \"signupNote\": \"웹보안 3분반\",\n  \"privacyAgreed\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "틀린 비밀번호 1/5",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('code INVALID_CREDENTIALS', () => pm.expect(pm.response.json().code).to.eql('INVALID_CREDENTIALS'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"Wrong000!\"\n}"
+            }
+          }
+        },
+        {
+          "name": "틀린 비밀번호 2/5",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('code INVALID_CREDENTIALS', () => pm.expect(pm.response.json().code).to.eql('INVALID_CREDENTIALS'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"Wrong000!\"\n}"
+            }
+          }
+        },
+        {
+          "name": "틀린 비밀번호 3/5",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('code INVALID_CREDENTIALS', () => pm.expect(pm.response.json().code).to.eql('INVALID_CREDENTIALS'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"Wrong000!\"\n}"
+            }
+          }
+        },
+        {
+          "name": "틀린 비밀번호 4/5",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('code INVALID_CREDENTIALS', () => pm.expect(pm.response.json().code).to.eql('INVALID_CREDENTIALS'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"Wrong000!\"\n}"
+            }
+          }
+        },
+        {
+          "name": "틀린 비밀번호 5/5 → 잠김",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('429', () => pm.response.to.have.status(429));",
+                  "pm.test('code ACCOUNT_LOCKED', () => pm.expect(pm.response.json().code).to.eql('ACCOUNT_LOCKED'));",
+                  "pm.test('Retry-After 900', () => pm.expect(pm.response.headers.get('Retry-After')).to.eql('900'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"Wrong000!\"\n}"
+            }
+          }
+        },
+        {
+          "name": "맞는 비밀번호도 거절",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('429', () => pm.response.to.have.status(429));",
+                  "pm.test('code ACCOUNT_LOCKED', () => pm.expect(pm.response.json().code).to.eql('ACCOUNT_LOCKED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. 관리자 승인",
+      "description": "먼저 '관리자 가입'을 보낸 뒤 터미널에서 관리자로 승격한다(hackforge-docs infra/account-operations.md의 첫 관리자 절차를 줄인 것):\ndocker compose exec postgres psql -U hackforge -c \"update users set role = 'ADMIN', status = 'APPROVED' where email = '<adminEmail 값>'\"\n역할은 로그인할 때 세션에 담기므로 승격한 뒤에 로그인한다.",
+      "item": [
+        {
+          "name": "관리자 가입 (보낸 뒤 psql로 승격)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "signup"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\",\n  \"name\": \"홍길동\",\n  \"nickname\": \"{{adminNickname}}\",\n  \"affiliation\": \"OO대 정보보호학과\",\n  \"signupNote\": \"웹보안 3분반\",\n  \"privacyAgreed\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "관리자 로그인",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.role = ADMIN', () => pm.expect(pm.response.json().role).to.eql(\"ADMIN\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "승인 대기 목록",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const u = pm.response.json().find(x => x.email === pm.collectionVariables.get('learnerEmail'));",
+                  "pm.test('가입한 학습자가 목록에 있음', () => pm.expect(u).to.be.an('object'));",
+                  "if (u) pm.collectionVariables.set('learnerId', u.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "승인",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.status = APPROVED', () => pm.expect(pm.response.json().status).to.eql(\"APPROVED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{learnerId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users",
+                "{{learnerId}}",
+                "approve"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "승인된 계정 거절 시도",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('code INVALID_STATUS_TRANSITION', () => pm.expect(pm.response.json().code).to.eql('INVALID_STATUS_TRANSITION'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{learnerId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users",
+                "{{learnerId}}",
+                "reject"
+              ]
+            },
+            "description": "계정 정지는 v1 범위 밖이라 승인된 계정은 거절할 수 없다."
+          }
+        },
+        {
+          "name": "승인된 계정 목록",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users?status=APPROVED",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "APPROVED"
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "관리자 로그아웃",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. 승인 확인",
+      "description": "학습자로 다시 로그인하면 상태가 APPROVED로 보인다. 승인 상태는 세션이 아니라 DB에서 매번 읽는다.",
+      "item": [
+        {
+          "name": "학습자 로그인",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{learnerEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "내 정보 (APPROVED)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.status = APPROVED', () => pm.expect(pm.response.json().status).to.eql(\"APPROVED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "학습자가 관리자 API 호출",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));",
+                  "pm.test('code FORBIDDEN', () => pm.expect(pm.response.json().code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "로그아웃",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. 역할 변경과 임시 비밀번호",
+      "description": "역할을 바꾸거나 임시 비밀번호를 발급하면 대상의 로그인 세션이 모두 지워진다. 임시 비밀번호는 응답으로 한 번만 보이고, 발급하면 잠금도 풀린다(3번 폴더에서 잠근 계정에 발급).",
+      "item": [
+        {
+          "name": "관리자 로그인",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('adminId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "자기 역할 변경 시도",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));",
+                  "pm.test('code CANNOT_CHANGE_OWN_ROLE', () => pm.expect(pm.response.json().code).to.eql('CANNOT_CHANGE_OWN_ROLE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{adminId}}/role",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users",
+                "{{adminId}}",
+                "role"
+              ]
+            },
+            "description": "자기 역할을 못 바꾸므로 관리자는 항상 1명 이상 남는다.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"LEARNER\"\n}"
+            }
+          }
+        },
+        {
+          "name": "학습자를 출제자로",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.role = AUTHOR', () => pm.expect(pm.response.json().role).to.eql(\"AUTHOR\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{learnerId}}/role",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users",
+                "{{learnerId}}",
+                "role"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"AUTHOR\"\n}"
+            }
+          }
+        },
+        {
+          "name": "잠긴 계정 찾기",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const u = pm.response.json().find(x => x.email === pm.collectionVariables.get('lockEmail'));",
+                  "pm.test('잠긴 계정이 목록에 있음', () => pm.expect(u).to.be.an('object'));",
+                  "if (u) pm.collectionVariables.set('lockId', u.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "임시 비밀번호 발급",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cache-Control no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));",
+                  "pm.collectionVariables.set('tempPassword', pm.response.json().temporaryPassword);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{lockId}}/temporary-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users",
+                "{{lockId}}",
+                "temporary-password"
+              ]
+            },
+            "description": "관리자가 이 값을 사용자에게 직접 전달한다. 응답이 캐시에 남지 않게 Cache-Control: no-store."
+          }
+        },
+        {
+          "name": "관리자 로그아웃",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. 내 비밀번호 변경",
+      "description": "임시 비밀번호로 로그인한 사용자가 자기 비밀번호로 바꾼다. 현재 비밀번호를 확인하고, 바꾸면 지금 세션만 남는다.",
+      "item": [
+        {
+          "name": "임시 비밀번호로 로그인 (잠금 풀림)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"{{tempPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "현재 비밀번호 틀림",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('code CURRENT_PASSWORD_MISMATCH', () => pm.expect(pm.response.json().code).to.eql('CURRENT_PASSWORD_MISMATCH'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/me/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me",
+                "password"
+              ]
+            },
+            "description": "401이 아니라 400이다. 401은 로그아웃된 것으로 처리되기 때문. 틀린 횟수는 로그인 실패와 합산된다.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"Wrong000!\",\n  \"newPassword\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "비밀번호 변경",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/me/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me",
+                "password"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{tempPassword}}\",\n  \"newPassword\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "로그아웃",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "바꾼 비밀번호로 로그인",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "로그아웃",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    }
+  ]
+}
