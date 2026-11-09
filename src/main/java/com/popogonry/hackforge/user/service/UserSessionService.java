@@ -20,4 +20,13 @@ public class UserSessionService {
 		sessionRepository.findByPrincipalName(String.valueOf(userId)).keySet().forEach(sessionRepository::deleteById);
 	}
 
+	/** 지금 요청의 세션만 남기고 지운다. 비밀번호를 바꾼 본인은 계속 쓰고, 다른 곳의 로그인은 끊긴다. */
+	public void deleteAllExcept(long userId, String keepSessionId) {
+		sessionRepository.findByPrincipalName(String.valueOf(userId))
+			.keySet()
+			.stream()
+			.filter(id -> !id.equals(keepSessionId))
+			.forEach(sessionRepository::deleteById);
+	}
+
 }

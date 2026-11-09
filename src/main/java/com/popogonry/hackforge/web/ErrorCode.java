@@ -15,6 +15,7 @@ public enum ErrorCode {
 	NICKNAME_TAKEN(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다"),
 	INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "이메일이나 비밀번호가 맞지 않습니다"),
 	ACCOUNT_LOCKED(HttpStatus.TOO_MANY_REQUESTS, "로그인을 여러 번 실패해 계정이 잠시 잠겼습니다"),
+	CURRENT_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 맞지 않습니다"),
 	UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다"),
 	FORBIDDEN(HttpStatus.FORBIDDEN, "권한이 없습니다"),
 	CANNOT_CHANGE_OWN_ROLE(HttpStatus.FORBIDDEN, "자기 역할은 바꿀 수 없습니다"),

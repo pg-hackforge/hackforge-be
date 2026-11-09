@@ -60,9 +60,12 @@ public class User {
 		this.role = role;
 	}
 
-	/** 관리자가 비밀번호를 새로 정해 줄 때. 비밀번호를 잊어 잠긴 경우가 많으므로 로그인 잠금도 푼다. */
-	public void resetPassword(String passwordHash) {
+	public void changePassword(String passwordHash) {
 		this.passwordHash = passwordHash;
+	}
+
+	/** 로그인 잠금을 풀고 실패 횟수를 0으로. */
+	public void unlock() {
 		this.failedLoginCount = 0;
 		this.lockedUntil = null;
 	}

@@ -32,6 +32,8 @@ public class UserService {
 
 	private final PasswordEncoder passwordEncoder;
 
+	private final UserSessionService userSessionService;
+
 	@Transactional
 	public User signup(SignupRequest request) {
 		User user = new User(normalize(request.email()), passwordEncoder.encode(request.password()), request.name(),
@@ -59,14 +61,43 @@ public class UserService {
 			throw locked(Duration.between(now, user.getLockedUntil()));
 		}
 		if (!passwordEncoder.matches(password, user.getPasswordHash())) {
-			userRepository.incrementFailedLoginCount(user.getId());
-			if (userRepository.lockIfFailedAtLeast(user.getId(), MAX_FAILED_LOGINS, now.plus(LOCK_DURATION)) == 1) {
+			if (recordFailure(user.getId(), now)) {
 				throw locked(LOCK_DURATION);
 			}
 			throw new ApiException(ErrorCode.INVALID_CREDENTIALS);
 		}
 		userRepository.resetFailedLoginCount(user.getId());
 		return user;
+	}
+
+	/**
+	 * 내 비밀번호 변경. 현재 비밀번호가 틀리면 로그인 실패와 같은 횟수에 더한다.
+	 * 이 요청으로 5번째가 되면 잠그고 그 계정의 세션을 모두 끊는다. 세션을 가진 사람이 이 API로
+	 * 비밀번호를 대입해 로그인 잠금을 피하지 못하게 하려는 것(ADR 011). 성공하면 지금 세션만 남긴다.
+	 */
+	@Transactional(noRollbackFor = ApiException.class)
+	public void changePassword(long userId, String currentSessionId, String currentPassword, String newPassword) {
+		User user = getCurrentUser(userId);
+		Instant now = Instant.now();
+		if (user.isLockedAt(now)) {
+			throw locked(Duration.between(now, user.getLockedUntil()));
+		}
+		if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+			if (recordFailure(userId, now)) {
+				userSessionService.deleteAll(userId);
+				throw locked(LOCK_DURATION);
+			}
+			throw new ApiException(ErrorCode.CURRENT_PASSWORD_MISMATCH);
+		}
+		user.changePassword(passwordEncoder.encode(newPassword));
+		userRepository.resetFailedLoginCount(userId);
+		userSessionService.deleteAllExcept(userId, currentSessionId);
+	}
+
+	/** 실패 횟수를 1 올리고, 이번 실패로 잠겼으면 true. 로그인과 비밀번호 변경이 같은 횟수를 쓴다. */
+	private boolean recordFailure(long userId, Instant now) {
+		userRepository.incrementFailedLoginCount(userId);
+		return userRepository.lockIfFailedAtLeast(userId, MAX_FAILED_LOGINS, now.plus(LOCK_DURATION)) == 1;
 	}
 
 	/** 남은 시간을 초 단위로 올림해 `Retry-After`에 담는다. */
