@@ -36,6 +36,17 @@ class ApiClient {
 		return send(req);
 	}
 
+	/** CSRF header는 넣고, 본문과 Content-Type은 그대로 보낸다. */
+	ResultActions post(String path, String body, String contentType) throws Exception {
+		if (!cookies.containsKey("XSRF-TOKEN")) {
+			get("/api/me");
+		}
+		return send(MockMvcRequestBuilders.post(path)
+			.header("X-XSRF-TOKEN", cookies.get("XSRF-TOKEN"))
+			.contentType(contentType)
+			.content(body));
+	}
+
 	/** CSRF header 없이 보낸다. */
 	ResultActions postWithoutCsrf(String path, String json) throws Exception {
 		return send(MockMvcRequestBuilders.post(path).contentType(MediaType.APPLICATION_JSON).content(json));
