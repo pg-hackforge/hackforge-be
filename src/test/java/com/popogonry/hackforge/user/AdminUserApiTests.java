@@ -4,6 +4,8 @@ import static com.popogonry.hackforge.user.AuthApiTests.loginJson;
 import static com.popogonry.hackforge.user.AuthApiTests.signupJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -158,6 +160,99 @@ class AdminUserApiTests {
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
 		admin.post("/api/admin/users/999999/reject", null)
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+	}
+
+	// 역할 변경 (유스케이스 14)
+
+	ApiClient loginAs(String email, String password) throws Exception {
+		ApiClient client = new ApiClient(mockMvc);
+		client.post("/api/auth/login", loginJson(email, password)).andExpect(status().isOk());
+		return client;
+	}
+
+	int sessionCount(long userId) {
+		return jdbcTemplate.queryForObject("select count(*) from spring_session where principal_name = ?",
+				Integer.class, String.valueOf(userId));
+	}
+
+	@Test
+	void changeRoleEndsTargetSessionsAndNewRoleAppliesAfterRelogin() throws Exception {
+		long kim = signup("kim@example.com", "kim");
+		ApiClient kimClient = loginAs("kim@example.com", "Passw0rd!");
+		kimClient.get("/api/admin/users").andExpect(status().isForbidden());
+
+		admin.put("/api/admin/users/" + kim + "/role", "{\"role\":\"ADMIN\"}")
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.id").value(kim))
+			.andExpect(jsonPath("$.role").value("ADMIN"));
+
+		// 세션에 든 역할은 로그인 때 값이라, 대상의 세션을 지워서 다시 로그인하게 한다
+		assertThat(sessionCount(kim)).isZero();
+		kimClient.get("/api/me").andExpect(status().isUnauthorized());
+		loginAs("kim@example.com", "Passw0rd!").get("/api/admin/users").andExpect(status().isOk());
+		// 바꾼 관리자 자신의 세션은 그대로
+		admin.get("/api/admin/users").andExpect(status().isOk());
+	}
+
+	@Test
+	void adminCannotChangeOwnRole() throws Exception {
+		long adminId = jdbcTemplate.queryForObject("select id from users where email = 'admin@example.com'", Long.class);
+
+		admin.put("/api/admin/users/" + adminId + "/role", "{\"role\":\"LEARNER\"}")
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("CANNOT_CHANGE_OWN_ROLE"));
+		assertThat(jdbcTemplate.queryForObject("select role from users where id = ?", String.class, adminId))
+			.isEqualTo("ADMIN");
+	}
+
+	@Test
+	void changeRoleRequiresValidRole() throws Exception {
+		long kim = signup("kim@example.com", "kim");
+
+		admin.put("/api/admin/users/" + kim + "/role", "{}")
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+		admin.put("/api/admin/users/" + kim + "/role", "{\"role\":\"SUPERUSER\"}")
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+	}
+
+	@Test
+	void changeRoleOfUnknownUserIsNotFound() throws Exception {
+		admin.put("/api/admin/users/999999/role", "{\"role\":\"AUTHOR\"}")
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+	}
+
+	// 임시 비밀번호 (유스케이스 15)
+
+	@Test
+	void temporaryPasswordReplacesPasswordEndsSessionsAndUnlocks() throws Exception {
+		long kim = signup("kim@example.com", "kim");
+		ApiClient kimClient = loginAs("kim@example.com", "Passw0rd!");
+		jdbcTemplate.update("update users set failed_login_count = 3, locked_until = now() + interval '10 minutes' where id = ?", kim);
+
+		String body = admin.post("/api/admin/users/" + kim + "/temporary-password", null)
+			.andExpect(status().isOk())
+			.andExpect(header().string("Cache-Control", containsString("no-store")))
+			.andReturn().getResponse().getContentAsString();
+		String temporary = com.jayway.jsonpath.JsonPath.read(body, "$.temporaryPassword");
+
+		assertThat(sessionCount(kim)).isZero();
+		kimClient.get("/api/me").andExpect(status().isUnauthorized());
+		assertThat(jdbcTemplate.queryForObject("select failed_login_count from users where id = ?", Integer.class, kim)).isZero();
+		assertThat(jdbcTemplate.queryForObject("select locked_until from users where id = ?", Object.class, kim)).isNull();
+
+		new ApiClient(mockMvc).post("/api/auth/login", loginJson("kim@example.com", "Passw0rd!"))
+			.andExpect(status().isUnauthorized());
+		loginAs("kim@example.com", temporary).get("/api/me").andExpect(status().isOk());
+	}
+
+	@Test
+	void temporaryPasswordForUnknownUserIsNotFound() throws Exception {
+		admin.post("/api/admin/users/999999/temporary-password", null)
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
 	}

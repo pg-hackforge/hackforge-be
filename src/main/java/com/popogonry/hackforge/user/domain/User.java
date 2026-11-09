@@ -56,6 +56,17 @@ public class User {
 		return lockedUntil != null && lockedUntil.isAfter(now);
 	}
 
+	public void changeRole(UserRole role) {
+		this.role = role;
+	}
+
+	/** 관리자가 비밀번호를 새로 정해 줄 때. 비밀번호를 잊어 잠긴 경우가 많으므로 로그인 잠금도 푼다. */
+	public void resetPassword(String passwordHash) {
+		this.passwordHash = passwordHash;
+		this.failedLoginCount = 0;
+		this.lockedUntil = null;
+	}
+
 	/** 가입. 승인 대기·학습자로 만든다. 동의 여부는 요청 검증에서 확인한 뒤 호출한다. */
 	public User(String email, String passwordHash, String name, String nickname, String affiliation, String signupNote,
 			Instant now) {
