@@ -17,7 +17,7 @@ Docker Desktop이 켜져 있어야 한다. 테스트는 Testcontainers로, `boot
 - 테스트만: `./gradlew test`
 - 실행: `./gradlew bootRun` → http://127.0.0.1:8080 (dev DB 컨테이너도 자동으로 시작, 앱 종료 시 정지)
 - dev DB 접속: `docker compose exec postgres psql -U hackforge`
-- 시연·수동 확인: `postman/hackforge.postman_collection.json`을 Postman에 import한다. 준비와 순서는 컬렉션·폴더 설명에 있다. API를 바꾸면 컬렉션도 같은 PR에서 고친다.
+- 시연·수동 확인: `postman/hackforge.postman_collection.json`을 Postman에 import한다. 준비와 순서는 컬렉션·폴더 설명에 있다.
 
 ## 작업 규칙
 
