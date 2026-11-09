@@ -19,7 +19,11 @@ public enum ErrorCode {
 	FORBIDDEN(HttpStatus.FORBIDDEN, "권한이 없습니다"),
 	CSRF_REJECTED(HttpStatus.FORBIDDEN, "CSRF token이 없거나 맞지 않습니다"),
 	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "없는 계정입니다"),
-	INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "지금 상태에서는 할 수 없는 처리입니다");
+	INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "지금 상태에서는 할 수 없는 처리입니다"),
+	NOT_FOUND(HttpStatus.NOT_FOUND, "없는 경로입니다"),
+	METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "이 경로에서 받지 않는 HTTP method입니다"),
+	UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "요청 본문은 JSON이어야 합니다"),
+	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버에서 오류가 났습니다");
 
 	private final HttpStatus status;
 
