@@ -19,7 +19,7 @@ public record SignupRequest(
 ) {
 
 	/** ASCII(공백 제외 키보드 기호)만. bcrypt는 72바이트까지만 처리하므로 64자 = 64바이트로 둔다. */
-	static final String PASSWORD = "^(?=.*[A-Za-z])(?=.*[0-9])(?=.*[^A-Za-z0-9])[\\x21-\\x7E]{8,64}$";
+	public static final String PASSWORD = "^(?=.*[A-Za-z])(?=.*[0-9])(?=.*[^A-Za-z0-9])[\\x21-\\x7E]{8,64}$";
 
 	static final String NICKNAME = "^[가-힣A-Za-z0-9_]{2,20}$";
 
