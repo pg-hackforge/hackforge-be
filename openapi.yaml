@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.1.3
+  version: 0.1.4
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -33,7 +33,8 @@ info:
 
     - 서버 내부 오류: 500 `INTERNAL_ERROR`. 원인은 응답에 담지 않고 서버 로그에만 남긴다
 servers:
-  - url: http://127.0.0.1:8080
+  # 이 문서를 내려준 서버. Swagger UI를 localhost로 열든 127.0.0.1로 열든 같은 origin으로 요청함
+  - url: /
 tags:
   - name: auth
     description: 가입, 로그인, 내 계정
