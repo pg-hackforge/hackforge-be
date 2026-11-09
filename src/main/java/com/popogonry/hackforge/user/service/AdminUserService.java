@@ -65,7 +65,9 @@ public class AdminUserService {
 	public String issueTemporaryPassword(long targetId) {
 		User user = getById(targetId);
 		String temporaryPassword = TemporaryPasswordGenerator.generate();
-		user.resetPassword(passwordEncoder.encode(temporaryPassword));
+		user.changePassword(passwordEncoder.encode(temporaryPassword));
+		// 비밀번호를 잊은 사용자는 여러 번 틀려 잠겨 있는 경우가 많다
+		user.unlock();
 		userSessionService.deleteAll(targetId);
 		return temporaryPassword;
 	}
