@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.1.4
+  version: 0.2.0
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -40,6 +40,20 @@ tags:
     description: 가입, 로그인, 내 계정
   - name: admin
     description: 관리자 전용. 로그인하지 않으면 401, 관리자가 아니면 403
+  - name: lab
+    description: >-
+      문제 목록과 실습 환경. 학습자마다 진행 중인 세션은 하나다.
+
+
+      시작과 종료는 바로 응답하고, 환경은 서버가 뒤에서 만들고 지운다.
+      화면은 `GET /api/labs/{id}`를 polling해서 상태를 본다.
+      생성 중과 종료 중(`CREATING`, `INITIALIZING`, `TERMINATING`)에는 2~3초,
+      `READY`에는 10초 정도 간격으로 보내고, `DELETED`나 `FAILED`가 되면 멈춘다.
+      polling은 활동으로 세지 않는다.
+
+
+      idle 종료: `READY`가 된 뒤 활동 없이 `idleDeadline`이 지나면 서버가 세션을 종료한다(`IDLE`).
+      화면은 `idleWarningAt`부터 경고와 [계속하기]를 보여 주고, [계속하기]는 `POST /api/labs/{id}/activity`로 보낸다.
 security:
   - sessionCookie: []
     csrfHeader: []
@@ -321,6 +335,171 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/UserNotFound'
+  /api/challenges:
+    get:
+      tags: [lab]
+      summary: 문제 목록
+      description: 승인 대기·거절 계정도 볼 수 있다. 승인은 실습을 시작할 때 확인한다
+      operationId: listChallenges
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: 문제 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChallengeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api/labs:
+    post:
+      tags: [lab]
+      summary: 실습 시작
+      description: >-
+        세션을 `CREATING`으로 만들고 바로 응답한다. 환경은 서버가 뒤에서 만든다.
+        승인 상태는 세션이 아니라 DB에서 매번 읽는다.
+        진행 중 세션에는 종료 중(`TERMINATING`)인 세션도 들어간다.
+        종료 직후에는 환경 삭제가 끝날 때까지 409가 날 수 있다.
+      operationId: startLab
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartLabRequest'
+      responses:
+        '202':
+          description: 시작 요청을 받음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabSessionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          description: 승인되지 않은 계정(`ACCOUNT_NOT_APPROVED`) 또는 CSRF 거절(`CSRF_REJECTED`)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 없는 문제(`CHALLENGE_NOT_FOUND`)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: 진행 중인 내 세션이 이미 있음(`LAB_ALREADY_ACTIVE`). 화면은 `GET /api/labs/current`로 그 세션을 연다
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: 동시 실습 정원이 참(`LAB_CAPACITY_FULL`). 대기열은 없다
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/labs/current:
+    get:
+      tags: [lab]
+      summary: 진행 중인 내 세션
+      description: 화면을 새로 열 때 진행 중인 세션에 다시 붙는 용도. 끝난 세션(`DELETED`, `FAILED`)은 나오지 않는다
+      operationId: getCurrentLab
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: 진행 중인 세션
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabSessionResponse'
+        '204':
+          description: 진행 중인 세션 없음
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api/labs/{id}:
+    get:
+      tags: [lab]
+      summary: 세션 조회
+      description: 끝난 세션도 조회된다. 화면은 `status`와 `endReason`으로 종료 이유를 안내한다
+      operationId: getLab
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '200':
+          description: 세션
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabSessionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/LabNotFound'
+    delete:
+      tags: [lab]
+      summary: 실습 종료
+      description: >-
+        `TERMINATING`으로 바꾸고 바로 응답한다. 환경은 서버가 뒤에서 지우고, 다 지우면 `DELETED`가 된다.
+        생성 중에도 종료할 수 있다. 이미 종료 중이거나 끝난 세션이면 바꾸지 않고 그 상태를 돌려준다
+      operationId: endLab
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '202':
+          description: 종료 요청을 받음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabSessionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+        '404':
+          $ref: '#/components/responses/LabNotFound'
+  /api/labs/{id}/activity:
+    post:
+      tags: [lab]
+      summary: 계속하기
+      description: 마지막 활동 시각을 지금으로 바꾸고, 새 `idleDeadline`과 `idleWarningAt`이 담긴 세션을 돌려준다
+      operationId: recordLabActivity
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '200':
+          description: 기록됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabSessionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+        '404':
+          $ref: '#/components/responses/LabNotFound'
+        '409':
+          description: '`READY`가 아닌 세션(`LAB_NOT_READY`)'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
 components:
   securitySchemes:
     sessionCookie:
@@ -334,6 +513,13 @@ components:
       description: '`XSRF-TOKEN` 쿠키 값을 그대로 넣는다'
   parameters:
     UserId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    LabSessionId:
       name: id
       in: path
       required: true
@@ -384,6 +570,12 @@ components:
             $ref: '#/components/schemas/Problem'
     InvalidStatusTransition:
       description: 지금 상태에서 할 수 없는 승인·거절(`INVALID_STATUS_TRANSITION`)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    LabNotFound:
+      description: 없는 세션이거나 남의 세션(`LAB_NOT_FOUND`). 남의 세션이 있는지도 드러내지 않는다
       content:
         application/problem+json:
           schema:
@@ -497,6 +689,76 @@ components:
       properties:
         temporaryPassword:
           type: string
+    ChallengeResponse:
+      type: object
+      required: [id, slug, title]
+      properties:
+        id:
+          type: integer
+          format: int64
+        slug:
+          type: string
+          description: 사람이 읽는 문제 이름(예 `sqli-login`)
+        title:
+          type: string
+    StartLabRequest:
+      type: object
+      required: [challengeId]
+      properties:
+        challengeId:
+          type: integer
+          format: int64
+    LabStatus:
+      type: string
+      description: >-
+        `CREATING` 시작 요청을 받음,
+        `INITIALIZING` 환경을 만들고 준비를 기다림,
+        `READY` 실습 중,
+        `TERMINATING` 환경을 지우는 중,
+        `DELETED` 끝남,
+        `FAILED` 재시도까지 실패해 환경을 만들지 못함.
+        생성에 한 번 실패하면 서버가 한 번 더 시도하며, 그동안 `INITIALIZING`에서 `CREATING`으로 돌아갈 수 있다
+      enum: [CREATING, INITIALIZING, READY, TERMINATING, DELETED, FAILED]
+    LabEndReason:
+      type: string
+      description: '`USER` 학습자가 종료, `IDLE` 활동 없음, `POD_LOST` 실습 중 환경이 비정상 종료됨'
+      enum: [USER, IDLE, POD_LOST]
+    LabSessionResponse:
+      type: object
+      required: [id, challengeId, challengeTitle, status, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        challengeId:
+          type: integer
+          format: int64
+        challengeTitle:
+          type: string
+        status:
+          $ref: '#/components/schemas/LabStatus'
+        endReason:
+          description: '학습자 종료, idle, 환경 비정상 종료로 `TERMINATING`·`DELETED`가 된 세션만. 진행 중이거나 생성 실패(`FAILED`)면 `null`'
+          oneOf:
+            - $ref: '#/components/schemas/LabEndReason'
+            - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+        readyAt:
+          type: [string, 'null']
+          format: date-time
+        endedAt:
+          type: [string, 'null']
+          format: date-time
+        idleDeadline:
+          description: '`READY`일 때만. 이 시각까지 활동이 없으면 서버가 종료한다'
+          type: [string, 'null']
+          format: date-time
+        idleWarningAt:
+          description: '`READY`일 때만. 이 시각부터 화면이 종료 경고를 보여 준다'
+          type: [string, 'null']
+          format: date-time
     Problem:
       description: RFC 9457 Problem Details
       type: object
@@ -534,6 +796,12 @@ components:
             - METHOD_NOT_ALLOWED
             - UNSUPPORTED_MEDIA_TYPE
             - INTERNAL_ERROR
+            - ACCOUNT_NOT_APPROVED
+            - CHALLENGE_NOT_FOUND
+            - LAB_NOT_FOUND
+            - LAB_ALREADY_ACTIVE
+            - LAB_NOT_READY
+            - LAB_CAPACITY_FULL
         errors:
           description: '`VALIDATION_FAILED`일 때 항목별 이유'
           type: array
