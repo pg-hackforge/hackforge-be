@@ -1,7 +1,5 @@
 package com.popogonry.hackforge.user;
 
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -18,16 +16,16 @@ import lombok.RequiredArgsConstructor;
 
 /** 브라우저처럼 cookie를 들고 다니고, GET이 아닌 요청에는 XSRF-TOKEN cookie 값을 header로 넣는다. */
 @RequiredArgsConstructor
-public class ApiClient {
+class ApiClient {
 
 	private final MockMvc mockMvc;
 	private final Map<String, String> cookies = new HashMap<>();
 
-	public ResultActions get(String path) throws Exception {
+	ResultActions get(String path) throws Exception {
 		return send(MockMvcRequestBuilders.get(path));
 	}
 
-	public ResultActions post(String path, String json) throws Exception {
+	ResultActions post(String path, String json) throws Exception {
 		if (!cookies.containsKey("XSRF-TOKEN")) {
 			get("/api/me");
 		}
@@ -38,7 +36,7 @@ public class ApiClient {
 		return send(req);
 	}
 
-	public ResultActions put(String path, String json) throws Exception {
+	ResultActions put(String path, String json) throws Exception {
 		if (!cookies.containsKey("XSRF-TOKEN")) {
 			get("/api/me");
 		}
@@ -49,7 +47,7 @@ public class ApiClient {
 	}
 
 	/** CSRF header는 넣고, 본문과 Content-Type은 그대로 보낸다. */
-	public ResultActions post(String path, String body, String contentType) throws Exception {
+	ResultActions post(String path, String body, String contentType) throws Exception {
 		if (!cookies.containsKey("XSRF-TOKEN")) {
 			get("/api/me");
 		}
@@ -60,22 +58,15 @@ public class ApiClient {
 	}
 
 	/** CSRF header 없이 보낸다. */
-	public ResultActions postWithoutCsrf(String path, String json) throws Exception {
+	ResultActions postWithoutCsrf(String path, String json) throws Exception {
 		return send(MockMvcRequestBuilders.post(path).contentType(MediaType.APPLICATION_JSON).content(json));
 	}
 
-	/** 가입하고 로그인한다. 계정은 승인 대기(PENDING)·학습자. 비밀번호는 Passw0rd!. */
-	public ApiClient signupAndLogin(String email, String nickname) throws Exception {
-		post("/api/auth/signup", AuthApiTests.signupJson(email, nickname)).andExpect(status().isCreated());
-		post("/api/auth/login", AuthApiTests.loginJson(email, "Passw0rd!")).andExpect(status().isOk());
-		return this;
-	}
-
-	public String cookie(String name) {
+	String cookie(String name) {
 		return cookies.get(name);
 	}
 
-	public void setCookie(String name, String value) {
+	void setCookie(String name, String value) {
 		cookies.put(name, value);
 	}
 
