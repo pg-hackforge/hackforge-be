@@ -59,6 +59,11 @@ tasks.named('processResources') {
 	from('openapi.yaml') { into 'static' }
 }
 
+// 개발 DB에만 테스트 문제를 넣는다(db/dev/R__dev_challenges.sql). 테스트와 운영 jar는 db/migration만 적용
+tasks.named('bootRun') {
+	systemProperty 'spring.flyway.locations', 'classpath:db/migration,classpath:db/dev'
+}
+
 tasks.named('test') {
 	useJUnitPlatform()
 	// Mockito가 실행 중에 agent를 붙이면 JDK가 경고하고, 이후 JDK에서는 막힘
