@@ -7,7 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param cpu 실습 Pod CPU. requests와 limits에 같은 값
  * @param memory 실습 Pod 메모리
  * @param disk 실습 Pod 디스크. {@code ephemeral-storage}와 {@code /var/lib/docker} emptyDir 상한
+ * @param maxConcurrent 동시 진행 세션 수 상한. {@code TERMINATING}도 포함(ADR 012)
  */
 @ConfigurationProperties("hackforge.lab")
-public record LabProperties(String kubeconfig, String cpu, String memory, String disk) {
+public record LabProperties(String kubeconfig, String cpu, String memory, String disk, int maxConcurrent) {
 }
