@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -280,6 +281,52 @@ class LabReconcilerTests {
 
 		assertThat(statusOf(id)).isEqualTo("TERMINATING");
 		assertThat(row(id).get("end_reason")).isEqualTo("USER");
+	}
+
+	@Test
+	void terminatingWaitsUntilNamespaceIsGone() {
+		long id = newSession(userId);
+		labReconciler.reconcileAll();
+		changeFromOutside(id, "TERMINATING", "USER");
+		cluster.holdNamespaceDeletion(true);
+
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("TERMINATING");
+		assertThat(row(id).get("ended_at")).isNull();
+
+		cluster.holdNamespaceDeletion(false);
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("DELETED");
+	}
+
+	/** 진행 중 세션이 없는 lab namespace를 지운다. 끝난 세션의 namespace가 남은 경우와 세션 행이 없는 경우(탈퇴 등) */
+	@Test
+	void orphanNamespacesAreDeleted() {
+		long active = newSession(userId);
+		long ended = newSession(newUser("lee"));
+		jdbcTemplate.update("update lab_sessions set status = 'DELETED', end_reason = 'USER' where id = ?", ended);
+		long missing = ended + 100;
+		for (long id : new long[] { active, ended, missing }) {
+			cluster.createNamespace(id);
+		}
+
+		labReconciler.deleteOrphans();
+
+		assertThat(cluster.listSessionIds()).isEqualTo(Set.of(active));
+	}
+
+	/** 종료 중 세션의 namespace는 reconciler가 지우는 중이므로 orphan이 아니다 */
+	@Test
+	void terminatingSessionIsNotOrphan() {
+		long id = newSession(userId);
+		labReconciler.reconcileAll();
+		changeFromOutside(id, "TERMINATING", "USER");
+		cluster.holdNamespaceDeletion(true);
+
+		labReconciler.deleteOrphans();
+
+		assertThat(cluster.listSessionIds()).isEqualTo(Set.of(id));
+		assertThat(statusOf(id)).isEqualTo("TERMINATING");
 	}
 
 	static class MutableClock extends Clock {

@@ -5,6 +5,7 @@ import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Supplier;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -259,6 +260,27 @@ class KubernetesLabCluster implements LabCluster {
 			}
 			throw new LabClusterException(ex);
 		}
+	}
+
+	@Override
+	public Set<Long> listSessionIds() {
+		List<V1Namespace> namespaces;
+		try {
+			// kubectl get namespaces -l hackforge/lab=true
+			namespaces = core().listNamespace().labelSelector("hackforge/lab=true").execute().getItems();
+		}
+		catch (ApiException ex) {
+			throw new LabClusterException(ex);
+		}
+		Set<Long> ids = new TreeSet<>();
+		for (V1Namespace ns : namespaces) {
+			String name = ns.getMetadata().getName();
+			// 백엔드가 만든 이름(lab-<세션 id>)만 본다
+			if (name.matches("lab-\\d+")) {
+				ids.add(Long.parseLong(name.substring("lab-".length())));
+			}
+		}
+		return ids;
 	}
 
 	// CoreV1Api, NetworkingV1Api는 ApiClient를 감싸는 가벼운 객체라 호출할 때마다 만들어도 된다

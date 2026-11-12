@@ -4,10 +4,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * 메모리에만 상태를 두는 {@link LabCluster}. Pod 상태는 테스트가 {@link #setPodStatus}로 바꾼다.
- * 삭제는 바로 끝난 것으로 처리한다. Spring context에 하나만 있으므로 테스트마다 {@link #reset}한다.
+ * 삭제는 바로 끝난 것으로 처리한다({@link #holdNamespaceDeletion}으로 미룰 수 있음). Spring context에 하나만 있으므로 테스트마다 {@link #reset}한다.
  */
 public class FakeLabCluster implements LabCluster {
 
@@ -21,6 +22,8 @@ public class FakeLabCluster implements LabCluster {
 
 	private Runnable onCreatePod = () -> {
 	};
+
+	private boolean holdNamespaceDeletion;
 
 	@Override
 	public void createNamespace(long sessionId) {
@@ -55,6 +58,9 @@ public class FakeLabCluster implements LabCluster {
 	@Override
 	public void deleteNamespace(long sessionId) {
 		throwIfFailing(sessionId);
+		if (holdNamespaceDeletion) {
+			return;
+		}
 		namespaces.remove(sessionId);
 		pods.remove(sessionId);
 	}
@@ -63,6 +69,11 @@ public class FakeLabCluster implements LabCluster {
 	public boolean namespaceExists(long sessionId) {
 		throwIfFailing(sessionId);
 		return namespaces.contains(sessionId);
+	}
+
+	@Override
+	public Set<Long> listSessionIds() {
+		return new TreeSet<>(namespaces);
 	}
 
 	public void setPodStatus(long sessionId, LabPodStatus status) {
@@ -84,7 +95,13 @@ public class FakeLabCluster implements LabCluster {
 		this.onCreatePod = action;
 	}
 
+	/** true면 namespace 삭제 요청을 받아도 지우지 않는다(삭제에 시간이 걸리는 상황). false로 바꾼 뒤 다음 요청에서 지워진다 */
+	public void holdNamespaceDeletion(boolean hold) {
+		this.holdNamespaceDeletion = hold;
+	}
+
 	public void reset() {
+		holdNamespaceDeletion = false;
 		namespaces.clear();
 		pods.clear();
 		images.clear();

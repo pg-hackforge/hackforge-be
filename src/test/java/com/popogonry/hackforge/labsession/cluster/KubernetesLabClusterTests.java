@@ -90,6 +90,15 @@ class KubernetesLabClusterTests {
 	}
 
 	@Test
+	void listsLabNamespaceAsSessionId() {
+		assertThat(labCluster.listSessionIds()).doesNotContain(SESSION);
+
+		labCluster.createNamespace(SESSION);
+
+		assertThat(labCluster.listSessionIds()).contains(SESSION);
+	}
+
+	@Test
 	void creatingTwiceKeepsOnePod() throws ApiException {
 		labCluster.createNamespace(SESSION);
 		labCluster.createNamespace(SESSION);

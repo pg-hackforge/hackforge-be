@@ -2,6 +2,8 @@ package com.popogonry.hackforge.labsession.service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
+import java.util.Set;
 
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
@@ -51,6 +53,21 @@ public class LabReconciler {
 			}
 			catch (RuntimeException e) {
 				log.warn("실습 세션 {} 처리 실패. 다음 주기에 다시 시도", id, e);
+			}
+		}
+	}
+
+	/**
+	 * 진행 중 세션이 없는 lab namespace를 지운다(끝난 세션에 남은 것, 탈퇴로 세션 행이 지워진 것). namespace 목록을 DB보다 먼저 읽는다.
+	 * namespace는 세션 행이 commit된 뒤에만 만들어지므로, 목록에 있는 namespace의 세션은 뒤에 읽는 DB에 반드시 있다.
+	 */
+	public void deleteOrphans() {
+		Set<Long> namespaces = labCluster.listSessionIds();
+		List<Long> active = labSessionRepository.findIdsByStatusNotIn(LabStatus.ENDED);
+		for (long id : namespaces) {
+			if (!active.contains(id)) {
+				log.info("실습 namespace lab-{}: 진행 중 세션이 없어서 삭제", id);
+				labCluster.deleteNamespace(id);
 			}
 		}
 	}
