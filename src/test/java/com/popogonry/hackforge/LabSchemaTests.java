@@ -14,7 +14,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** challenges, lab_sessions 테이블 제약(ADR 012)과 개발 전용 seed. */
+import com.popogonry.hackforge.challenge.TestChallenges;
+
+/** challenges, challenge_hints, lab_sessions 테이블 제약(ADR 012, ADR 014)과 개발 전용 seed. */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class LabSchemaTests {
@@ -39,9 +41,7 @@ class LabSchemaTests {
 				insert into users (email, password_hash, name, nickname, affiliation, role, status, privacy_agreed_at, created_at)
 				values ('kim@example.com', 'x', '김', 'kim', '학교', 'LEARNER', 'APPROVED', now(), now()) returning id
 				""", Long.class);
-		challengeId = jdbcTemplate.queryForObject(
-				"insert into challenges (slug, title, image) values ('test-web', '테스트', 'test-web:0.1.0') returning id",
-				Long.class);
+		challengeId = TestChallenges.insert(jdbcTemplate, "test-web", "테스트", "test-web:0.1.0");
 	}
 
 	void insertSession(String status) {
@@ -98,8 +98,55 @@ class LabSchemaTests {
 
 	@Test
 	void slugAllowsOnlyLowercaseDigitsAndHyphen() {
+		assertThatThrownBy(() -> TestChallenges.insert(jdbcTemplate, "Test_Web", "t", "i"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	void insertHint(String stage, int position) {
+		jdbcTemplate.update("insert into challenge_hints (challenge_id, stage, position, content) values (?, ?, ?, 'h')",
+				challengeId, stage, position);
+	}
+
+	long hintCount() {
+		return jdbcTemplate.queryForObject("select count(*) from challenge_hints", Long.class);
+	}
+
+	@Test
+	void hintsHaveThreePositionsPerStage() {
+		for (String stage : new String[] { "ATTACK", "DEFENSE" }) {
+			for (int position = 1; position <= 3; position++) {
+				insertHint(stage, position);
+			}
+		}
+
+		assertThat(hintCount()).isEqualTo(6);
+		assertThatThrownBy(() -> insertHint("ATTACK", 1)).isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> insertHint("ATTACK", 4)).isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> insertHint("ATTACK", 0)).isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> insertHint("HINT", 1)).isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	void deletingChallengeDeletesHints() {
+		insertHint("ATTACK", 1);
+		insertHint("DEFENSE", 1);
+
+		jdbcTemplate.update("delete from challenges where id = ?", challengeId);
+
+		assertThat(hintCount()).isZero();
+	}
+
+	@Test
+	void maxDefenseAttemptsMustBePositive() {
+		assertThatThrownBy(() -> jdbcTemplate.update("update challenges set max_defense_attempts = 0"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	/** 형식의 모든 항목이 있어야 등록된다 */
+	@Test
+	void challengeWithoutScriptsIsRejected() {
 		assertThatThrownBy(() -> jdbcTemplate
-			.update("insert into challenges (slug, title, image) values ('Test_Web', 't', 'i')"))
+			.update("insert into challenges (slug, title, image, description) values ('no-scripts', 't', 'i', 'd')"))
 			.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
@@ -124,8 +171,10 @@ class LabSchemaTests {
 			.migrate();
 
 		String slug = jdbcTemplate.queryForObject("select slug from dev_seed_check.challenges", String.class);
+		Long hints = jdbcTemplate.queryForObject("select count(*) from dev_seed_check.challenge_hints", Long.class);
 
 		assertThat(slug).isEqualTo("test-web");
+		assertThat(hints).isEqualTo(6);
 		jdbcTemplate.execute("drop schema dev_seed_check cascade");
 	}
 

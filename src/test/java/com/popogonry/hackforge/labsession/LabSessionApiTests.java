@@ -28,6 +28,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.popogonry.hackforge.TestcontainersConfiguration;
+import com.popogonry.hackforge.challenge.TestChallenges;
 import com.popogonry.hackforge.user.ApiClient;
 
 /** 실습 시작, 종료, 활동 기록과 세션 조회(ADR 012). 정원은 hackforge.lab.max-concurrent=2, idle은 30m, 경고는 5m(application.properties) */
@@ -55,10 +56,7 @@ class LabSessionApiTests {
 		jdbcTemplate.update("delete from challenges");
 		jdbcTemplate.update("delete from spring_session");
 		jdbcTemplate.update("delete from users");
-		challengeId = jdbcTemplate.queryForObject("""
-				insert into challenges (slug, title, image)
-				values ('test-web', '테스트 문제', 'hackforge/lab-test-challenge:0.1.0') returning id
-				""", Long.class);
+		challengeId = TestChallenges.insert(jdbcTemplate, "test-web", "테스트 문제", "hackforge/lab-test-challenge:0.1.0");
 	}
 
 	/** 계정을 DB에 바로 넣고 로그인한 client */
