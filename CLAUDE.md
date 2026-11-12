@@ -15,6 +15,7 @@ Docker Desktop이 켜져 있어야 한다. 테스트는 Testcontainers로, `boot
 - 빌드 + 테스트: `./gradlew build` (CI와 같은 명령)
 - API spec lint: `npx --yes @redocly/cli@2.65.0 lint openapi.yaml` (CI도 같은 명령을 먼저 돌린다)
 - 테스트만: `./gradlew test`
+- 클러스터 테스트: `./gradlew clusterTest`. 개발 VM에 실제로 namespace와 Pod를 만든다(`@Tag("cluster")`, `build`에서는 빠짐). 환경 변수 `HACKFORGE_LAB_KUBECONFIG`에 백엔드 kubeconfig 경로(hackforge-docs `infra/cluster-setup.md` 8.3)가 필요하다. `bootRun`도 같은 변수로 클러스터에 접속한다
 - 실행: `./gradlew bootRun` → http://127.0.0.1:8080 (dev DB 컨테이너도 자동으로 시작, 앱 종료 시 정지)
 - API 손으로 확인: `bootRun` 중에 http://127.0.0.1:8080/swagger-ui.html (`openapi.yaml`을 그대로 보여 줌)
 - dev DB 접속: `docker compose exec postgres psql -U hackforge`
@@ -26,7 +27,7 @@ Docker Desktop이 켜져 있어야 한다. 테스트는 Testcontainers로, `boot
 - DB schema는 `src/main/resources/db/migration/V<번호>__<이름>.sql`로만 바꾼다. 머지된 파일은 고치지 않고 새 파일을 추가한다(ADR 010).
 - 의존성은 `implementation` 등 지금 쓰는 configuration을 따르고, Boot BOM이 관리하는 라이브러리는 버전을 생략한다.
 - spec과 코드가 어긋나면 코드를 맞추지 말고 먼저 묻는다. 문서를 먼저 고친다.
-- 패키지는 도메인으로 나누고(`user`), 그 안은 역할 폴더로 나눈다: `controller`, `service`, `repository`, `dto`, `domain`(entity와 enum). 파일이 1개여도 같은 폴더에 둔다. 해당 파일이 없는 폴더는 만들지 않는다.
+- 패키지는 도메인으로 나누고(`user`), 그 안은 역할 폴더로 나눈다: `controller`, `service`, `repository`, `dto`, `domain`(entity와 enum). 파일이 1개여도 같은 폴더에 둔다. 해당 파일이 없는 폴더는 만들지 않는다. 외부 시스템 client는 `cluster`처럼 그 시스템 이름의 폴더에 둔다(`labsession/cluster`).
 - 이름
   - 패키지와 클래스는 entity 이름을 따른다(`user` 패키지, `User`, `UserService`). 문서의 기능 이름("계정")과 달라도 된다.
   - 주입 필드와 parameter는 타입 이름을 camelCase로(`userRepository`, `passwordEncoder`).
