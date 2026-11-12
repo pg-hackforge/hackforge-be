@@ -1,6 +1,6 @@
 # hackforge-be
 
-Hackforge 백엔드. Java 25, Spring Boot 4.1.1, Gradle 9.8.1(wrapper), 패키지 `com.popogonry.hackforge`.
+Hackforge 백엔드. Java 25, Spring Boot 4.1.2, Gradle 9.8.1(wrapper), 패키지 `com.popogonry.hackforge`.
 
 ## 먼저 읽을 것
 
