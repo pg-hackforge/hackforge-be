@@ -11,8 +11,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param disk 실습 Pod 디스크. {@code ephemeral-storage}와 {@code /var/lib/docker} emptyDir 상한
  * @param maxConcurrent 동시 진행 세션 수 상한. {@code TERMINATING}도 포함(ADR 012)
  * @param startTimeout {@code CREATING}, {@code INITIALIZING}에 머물 수 있는 시간. 넘으면 생성 실패로 본다
+ * @param idleTimeout {@code READY}에서 마지막 활동 뒤 이 시간이 지나면 종료한다({@code IDLE})
+ * @param idleWarning idle 종료 몇 분 전부터 경고할지. 응답의 {@code idleWarningAt}
  */
 @ConfigurationProperties("hackforge.lab")
 public record LabProperties(String kubeconfig, String cpu, String memory, String disk, int maxConcurrent,
-		Duration startTimeout) {
+		Duration startTimeout, Duration idleTimeout, Duration idleWarning) {
 }

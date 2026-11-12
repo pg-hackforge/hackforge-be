@@ -124,8 +124,12 @@ public class LabReconciler {
 		return fail(session, now, "Pod " + pod);
 	}
 
-	/** 실습 중 Pod가 죽거나(메모리·디스크 초과 등) 사라짐 */
+	/** 마지막 활동 뒤 idle-timeout이 지났거나, 실습 중 Pod가 죽거나(메모리·디스크 초과 등) 사라짐 */
 	private String ready(LabSession session, Instant now) {
+		if (session.idleDeadline(labProperties.idleTimeout()).isBefore(now)) {
+			session.terminate(LabEndReason.IDLE, now);
+			return "idle-timeout 초과";
+		}
 		LabPodStatus pod = labCluster.getPodStatus(session.getId());
 		if (pod == LabPodStatus.READY || pod == LabPodStatus.STARTING) {
 			return null;

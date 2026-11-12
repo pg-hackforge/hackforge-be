@@ -83,6 +83,17 @@ public class LabSessionService {
 		return get(id, userId);
 	}
 
+	/** [계속하기]. 남의 세션과 없는 세션은 404, {@code READY}가 아니면 409 */
+	@Transactional
+	public LabSession recordActivity(long id, long userId) {
+		int updated = labSessionRepository.recordActivity(id, userId, LabStatus.READY, clock.instant());
+		LabSession session = get(id, userId);
+		if (updated == 0) {
+			throw new ApiException(ErrorCode.LAB_NOT_READY);
+		}
+		return session;
+	}
+
 	/** 남의 세션도 없는 세션과 같은 404. 존재 여부를 노출하지 않는다 */
 	public LabSession get(long id, long userId) {
 		return labSessionRepository.findByIdAndUserId(id, userId)

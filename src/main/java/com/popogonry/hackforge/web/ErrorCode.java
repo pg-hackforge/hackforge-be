@@ -26,6 +26,7 @@ public enum ErrorCode {
 	CHALLENGE_NOT_FOUND(HttpStatus.NOT_FOUND, "없는 문제입니다"),
 	LAB_NOT_FOUND(HttpStatus.NOT_FOUND, "없는 실습 세션입니다"),
 	LAB_ALREADY_ACTIVE(HttpStatus.CONFLICT, "진행 중인 실습이 있습니다"),
+	LAB_NOT_READY(HttpStatus.CONFLICT, "실습 환경이 준비된 상태가 아닙니다"),
 	LAB_CAPACITY_FULL(HttpStatus.SERVICE_UNAVAILABLE, "지금은 자리가 없습니다"),
 	NOT_FOUND(HttpStatus.NOT_FOUND, "없는 경로입니다"),
 	METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "이 경로에서 받지 않는 HTTP method입니다"),
