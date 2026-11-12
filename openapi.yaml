@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.2.0
+  version: 0.2.1
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -339,7 +339,7 @@ paths:
     get:
       tags: [lab]
       summary: 문제 목록
-      description: 승인 대기·거절 계정도 조회 가능. 승인 여부는 실습 시작 시점에만 확인한다
+      description: 승인 대기·거절 계정도 조회 가능. 승인 여부는 실습 시작 시점에만 확인한다. id 순서로 반환한다
       operationId: listChallenges
       security:
         - sessionCookie: []
@@ -690,7 +690,8 @@ components:
           type: string
     ChallengeResponse:
       type: object
-      required: [id, slug, title]
+      description: 힌트, 해답, 검증 스크립트는 넣지 않는다
+      required: [id, slug, title, description]
       properties:
         id:
           type: integer
@@ -700,6 +701,9 @@ components:
           description: '사람이 읽을 수 있는 문제 식별자(예: `sqli-login`)'
         title:
           type: string
+        description:
+          type: string
+          description: 문제 목록에 보이는 설명(Markdown). Challenge 저장소의 `meta/description.md`
     StartLabRequest:
       type: object
       required: [challengeId]
