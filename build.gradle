@@ -52,6 +52,13 @@ dependencies {
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	implementation 'io.kubernetes:client-java:27.0.1'
 	mockitoAgent('org.mockito:mockito-core') { transitive = false }
+	constraints {
+		// client-java 27.0.1이 끌어오는 버전에 알려진 취약점이 있어 올림(OSV, 2026-11-12). client-java를 올릴 때 다시 확인
+		implementation 'org.bouncycastle:bcprov-jdk18on:1.86'
+		implementation 'org.bouncycastle:bcpkix-jdk18on:1.86'
+		implementation 'org.bouncycastle:bcutil-jdk18on:1.86'
+		implementation 'com.google.guava:guava:33.7.2-jre'
+	}
 }
 
 // Swagger UI가 보여 줄 spec. 코드에서 만들지 않고 openapi.yaml을 그대로 쓴다
@@ -65,7 +72,20 @@ tasks.named('bootRun') {
 }
 
 tasks.named('test') {
-	useJUnitPlatform()
+	useJUnitPlatform {
+		excludeTags 'cluster'
+	}
 	// Mockito가 실행 중에 agent를 붙이면 JDK가 경고하고, 이후 JDK에서는 막힘
 	jvmArgs += "-javaagent:${configurations.mockitoAgent.asPath}"
+}
+
+// 실제 클러스터를 호출하는 테스트(@Tag("cluster")). 환경 변수 HACKFORGE_LAB_KUBECONFIG에 백엔드 kubeconfig 경로 필요
+tasks.register('clusterTest', Test) {
+	description = 'Runs tests against the dev cluster.'
+	group = 'verification'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'cluster'
+	}
 }
