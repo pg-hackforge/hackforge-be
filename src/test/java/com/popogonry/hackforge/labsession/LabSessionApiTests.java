@@ -26,7 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.popogonry.hackforge.TestcontainersConfiguration;
 import com.popogonry.hackforge.user.ApiClient;
 
-/** 실습 시작과 세션 조회(ADR 012). 정원은 application.properties의 hackforge.lab.max-concurrent=2 */
+/** 실습 시작, 종료와 세션 조회(ADR 012). 정원은 application.properties의 hackforge.lab.max-concurrent=2 */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -270,6 +270,75 @@ class LabSessionApiTests {
 		kim.get("/api/labs/" + (leeSession + 999))
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("LAB_NOT_FOUND"));
+	}
+
+	long onlySessionId() {
+		return jdbcTemplate.queryForObject("select id from lab_sessions", Long.class);
+	}
+
+	/** 생성 중에도 종료할 수 있다. 종료 중에는 새로 시작할 수 없다 */
+	@Test
+	void endWhileCreatingMovesToTerminating() throws Exception {
+		ApiClient kim = approved("kim");
+		kim.post("/api/labs", startJson(challengeId)).andExpect(status().isAccepted());
+		long id = onlySessionId();
+
+		kim.delete("/api/labs/" + id)
+			.andExpect(status().isAccepted())
+			.andExpect(jsonPath("$.id").value(id))
+			.andExpect(jsonPath("$.status").value("TERMINATING"))
+			.andExpect(jsonPath("$.endReason").value("USER"));
+
+		kim.post("/api/labs", startJson(challengeId))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("LAB_ALREADY_ACTIVE"));
+	}
+
+	/** 종료는 version을 올린다. 그 전에 세션을 읽은 reconciler의 저장이 실패해서 종료가 덮이지 않는다 */
+	@Test
+	void endIncrementsVersion() throws Exception {
+		ApiClient kim = approved("kim");
+		kim.post("/api/labs", startJson(challengeId)).andExpect(status().isAccepted());
+		jdbcTemplate.update("update lab_sessions set status = 'READY'");
+		long before = jdbcTemplate.queryForObject("select version from lab_sessions", Long.class);
+
+		kim.delete("/api/labs/" + onlySessionId()).andExpect(status().isAccepted());
+
+		assertThat(jdbcTemplate.queryForObject("select version from lab_sessions", Long.class)).isGreaterThan(before);
+	}
+
+	/** 이미 종료 중이거나 끝난 세션은 바꾸지 않고 현재 상태로 응답한다 */
+	@Test
+	void endAgainKeepsCurrentState() throws Exception {
+		ApiClient kim = approved("kim");
+		kim.post("/api/labs", startJson(challengeId)).andExpect(status().isAccepted());
+		long id = onlySessionId();
+		kim.delete("/api/labs/" + id).andExpect(status().isAccepted());
+		Object changedAt = jdbcTemplate.queryForObject("select status_changed_at from lab_sessions", Object.class);
+
+		kim.delete("/api/labs/" + id)
+			.andExpect(status().isAccepted())
+			.andExpect(jsonPath("$.status").value("TERMINATING"));
+		assertThat(jdbcTemplate.queryForObject("select status_changed_at from lab_sessions", Object.class))
+			.isEqualTo(changedAt);
+
+		jdbcTemplate.update("update lab_sessions set status = 'FAILED', end_reason = null, ended_at = now()");
+		kim.delete("/api/labs/" + id)
+			.andExpect(status().isAccepted())
+			.andExpect(jsonPath("$.status").value("FAILED"))
+			.andExpect(jsonPath("$.endReason").value(nullValue()));
+	}
+
+	@Test
+	void endOtherLearnersOrUnknownSessionIsNotFound() throws Exception {
+		long leeSession = insertSession("lee", "READY");
+		ApiClient kim = approved("kim");
+
+		kim.delete("/api/labs/" + leeSession)
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("LAB_NOT_FOUND"));
+		kim.delete("/api/labs/" + (leeSession + 999)).andExpect(status().isNotFound());
+		assertThat(jdbcTemplate.queryForObject("select status from lab_sessions", String.class)).isEqualTo("READY");
 	}
 
 	@Test

@@ -46,6 +46,13 @@ public class ApiClient {
 			.content(json));
 	}
 
+	public ResultActions delete(String path) throws Exception {
+		if (!cookies.containsKey("XSRF-TOKEN")) {
+			get("/api/me");
+		}
+		return send(MockMvcRequestBuilders.delete(path).header("X-XSRF-TOKEN", cookies.get("XSRF-TOKEN")));
+	}
+
 	/** CSRF header는 넣고, 본문과 Content-Type은 그대로 보낸다. */
 	ResultActions post(String path, String body, String contentType) throws Exception {
 		if (!cookies.containsKey("XSRF-TOKEN")) {
