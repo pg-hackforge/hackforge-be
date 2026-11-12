@@ -16,16 +16,16 @@ import lombok.RequiredArgsConstructor;
 
 /** 브라우저처럼 cookie를 들고 다니고, GET이 아닌 요청에는 XSRF-TOKEN cookie 값을 header로 넣는다. */
 @RequiredArgsConstructor
-class ApiClient {
+public class ApiClient {
 
 	private final MockMvc mockMvc;
 	private final Map<String, String> cookies = new HashMap<>();
 
-	ResultActions get(String path) throws Exception {
+	public ResultActions get(String path) throws Exception {
 		return send(MockMvcRequestBuilders.get(path));
 	}
 
-	ResultActions post(String path, String json) throws Exception {
+	public ResultActions post(String path, String json) throws Exception {
 		if (!cookies.containsKey("XSRF-TOKEN")) {
 			get("/api/me");
 		}
@@ -62,11 +62,11 @@ class ApiClient {
 		return send(MockMvcRequestBuilders.post(path).contentType(MediaType.APPLICATION_JSON).content(json));
 	}
 
-	String cookie(String name) {
+	public String cookie(String name) {
 		return cookies.get(name);
 	}
 
-	void setCookie(String name, String value) {
+	public void setCookie(String name, String value) {
 		cookies.put(name, value);
 	}
 
