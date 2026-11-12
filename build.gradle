@@ -75,6 +75,8 @@ tasks.named('test') {
 	useJUnitPlatform {
 		excludeTags 'cluster'
 	}
+	// 다른 테스트가 만든 세션을 reconciler가 처리하지 않게 끈다. reconciler 테스트는 직접 호출함
+	systemProperty 'hackforge.lab.reconciler.enabled', 'false'
 	// Mockito가 실행 중에 agent를 붙이면 JDK가 경고하고, 이후 JDK에서는 막힘
 	jvmArgs += "-javaagent:${configurations.mockitoAgent.asPath}"
 }

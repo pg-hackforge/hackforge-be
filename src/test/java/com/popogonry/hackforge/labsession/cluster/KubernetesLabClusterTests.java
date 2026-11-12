@@ -46,7 +46,7 @@ class KubernetesLabClusterTests {
 	void setUp() throws IOException {
 		String kubeconfig = System.getenv("HACKFORGE_LAB_KUBECONFIG");
 		assertThat(kubeconfig).as("환경 변수 HACKFORGE_LAB_KUBECONFIG").isNotBlank();
-		labCluster = new KubernetesLabCluster(new LabProperties(kubeconfig, "500m", "512Mi", "2Gi", 2));
+		labCluster = new KubernetesLabCluster(new LabProperties(kubeconfig, "500m", "512Mi", "2Gi", 2, Duration.ofMinutes(5)));
 		core = new CoreV1Api(Config.fromConfig(kubeconfig));
 	}
 

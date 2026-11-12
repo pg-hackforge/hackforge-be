@@ -1,6 +1,7 @@
 package com.popogonry.hackforge.labsession.repository;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,5 +23,8 @@ public interface LabSessionRepository extends JpaRepository<LabSession, Long> {
 	Optional<LabSession> findByUserIdAndStatusNotIn(long userId, Collection<LabStatus> statuses);
 
 	Optional<LabSession> findByIdAndUserId(long id, long userId);
+
+	@Query("select s.id from LabSession s where s.status not in :statuses order by s.id")
+	List<Long> findIdsByStatusNotIn(Collection<LabStatus> statuses);
 
 }
