@@ -81,6 +81,9 @@ class KubernetesLabClusterTests {
 		assertThat(pod.getSpec().getAutomountServiceAccountToken()).isFalse();
 		assertThat(pod.getSpec().getHostUsers()).isFalse();
 		assertThat(pod.getSpec().getRuntimeClassName()).isEqualTo("sysbox-runc");
+		assertThat(pod.getSpec().getDnsPolicy()).isEqualTo("None");
+		assertThat(pod.getSpec().getDnsConfig().getNameservers()).containsExactly("127.0.0.1");
+		assertThat(pod.getSpec().getDnsConfig().getSearches()).isNullOrEmpty();
 
 		waitUntil(Duration.ofMinutes(2), () -> labCluster.getPodStatus(SESSION) == LabPodStatus.READY);
 

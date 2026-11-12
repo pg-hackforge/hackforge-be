@@ -28,6 +28,7 @@ import io.kubernetes.client.openapi.models.V1NetworkPolicy;
 import io.kubernetes.client.openapi.models.V1NetworkPolicySpec;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import io.kubernetes.client.openapi.models.V1Pod;
+import io.kubernetes.client.openapi.models.V1PodDNSConfig;
 import io.kubernetes.client.openapi.models.V1PodSpec;
 import io.kubernetes.client.openapi.models.V1Probe;
 import io.kubernetes.client.openapi.models.V1ResourceQuota;
@@ -151,6 +152,11 @@ class KubernetesLabCluster implements LabCluster {
 				.automountServiceAccountToken(false)
 				// 클러스터의 Service 주소를 환경 변수로 넣지 않는다
 				.enableServiceLinks(false)
+				// 기본값(ClusterFirst)이면 Pod의 search 도메인과 ndots:5가 inner container로 넘어가서, compose 서비스 이름(db)을
+				// 클러스터 DNS에 먼저 묻다가 네트워크 차단에 걸려 timeout이 난다. 클러스터 DNS는 어차피 막혀 있으므로 search 없이
+				// loopback만 둔다. 서비스 이름은 inner docker의 내장 DNS가 바로 응답한다(ADR 013)
+				.dnsPolicy("None")
+				.dnsConfig(new V1PodDNSConfig().nameservers(List.of("127.0.0.1")))
 				// 주 프로세스가 죽으면 다시 띄우지 않고 Failed로 둔다. 재시도와 종료는 reconciler가 판단한다
 				.restartPolicy("Never")
 				.addContainersItem(new V1Container().name("lab")
