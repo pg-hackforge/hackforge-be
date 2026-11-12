@@ -42,4 +42,12 @@ public interface LabSessionRepository extends JpaRepository<LabSession, Long> {
 			""")
 	int terminate(long id, long userId, Collection<LabStatus> from, LabStatus terminating, LabEndReason reason, Instant now);
 
+	/** {@code READY}일 때만 마지막 활동 시각을 바꾼다. version을 올리는 이유는 {@link #terminate}와 같다. 바뀐 행 수를 반환한다 */
+	@Modifying
+	@Query("""
+			update LabSession s set s.lastActivityAt = :now, s.version = s.version + 1
+			where s.id = :id and s.userId = :userId and s.status = :ready
+			""")
+	int recordActivity(long id, long userId, LabStatus ready, Instant now);
+
 }

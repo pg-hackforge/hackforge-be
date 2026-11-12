@@ -25,7 +25,7 @@ import com.popogonry.hackforge.labsession.cluster.FakeLabCluster;
 import com.popogonry.hackforge.labsession.cluster.LabCluster;
 import com.popogonry.hackforge.labsession.cluster.LabPodStatus;
 
-/** reconciler 상태 전이(ADR 012). 클러스터는 {@link FakeLabCluster}, 시간은 {@link MutableClock}으로 바꾼다. start-timeout은 5m */
+/** reconciler 상태 전이(ADR 012). 클러스터는 {@link FakeLabCluster}, 시간은 {@link MutableClock}으로 바꾼다. start-timeout 5m, idle-timeout 30m */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class LabReconcilerTests {
@@ -281,6 +281,60 @@ class LabReconcilerTests {
 
 		assertThat(statusOf(id)).isEqualTo("TERMINATING");
 		assertThat(row(id).get("end_reason")).isEqualTo("USER");
+	}
+
+	/** 지금 시각에 READY가 된 세션 */
+	long readySession() {
+		long id = newSession(userId);
+		labReconciler.reconcileAll();
+		cluster.setPodStatus(id, LabPodStatus.READY);
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("READY");
+		return id;
+	}
+
+	@Test
+	void readySessionWithoutActivityForIdleTimeoutEndsAsIdle() {
+		long id = readySession();
+
+		now.advance(Duration.ofMinutes(30));
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("READY");
+
+		now.advance(Duration.ofSeconds(1));
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("TERMINATING");
+		assertThat(row(id).get("end_reason")).isEqualTo("IDLE");
+
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("DELETED");
+	}
+
+	@Test
+	void activityPushesIdleTimeoutBack() {
+		long id = readySession();
+		now.advance(Duration.ofMinutes(20));
+		jdbcTemplate.update("update lab_sessions set last_activity_at = ? where id = ?", Timestamp.from(now.instant()), id);
+
+		now.advance(Duration.ofMinutes(20));
+		labReconciler.reconcileAll();
+
+		assertThat(statusOf(id)).isEqualTo("READY");
+	}
+
+	/** idle 시간은 READY부터 센다. 생성에 걸린 시간은 들어가지 않는다 */
+	@Test
+	void creationTimeIsNotCountedAsIdle() {
+		long id = newSession(userId);
+		labReconciler.reconcileAll();
+		now.advance(Duration.ofMinutes(4));
+		cluster.setPodStatus(id, LabPodStatus.READY);
+		labReconciler.reconcileAll();
+
+		now.advance(Duration.ofMinutes(29));
+		labReconciler.reconcileAll();
+
+		assertThat(statusOf(id)).isEqualTo("READY");
 	}
 
 	@Test

@@ -1,5 +1,6 @@
 package com.popogonry.hackforge.labsession.domain;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import jakarta.persistence.Entity;
@@ -80,6 +81,11 @@ public class LabSession {
 		changeStatus(LabStatus.READY, now);
 		this.readyAt = now;
 		this.lastActivityAt = now;
+	}
+
+	/** {@code READY}일 때만 값이 있다. 이 시각이 지나도록 활동이 없으면 idle 종료한다 */
+	public Instant idleDeadline(Duration idleTimeout) {
+		return status == LabStatus.READY ? lastActivityAt.plus(idleTimeout) : null;
 	}
 
 	/** 생성 실패 후 다시 만든다. 지금까지 재시도한 횟수를 {@code startAttempts}에 센다 */

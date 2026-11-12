@@ -5,6 +5,10 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -26,7 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.popogonry.hackforge.TestcontainersConfiguration;
 import com.popogonry.hackforge.user.ApiClient;
 
-/** 실습 시작, 종료와 세션 조회(ADR 012). 정원은 application.properties의 hackforge.lab.max-concurrent=2 */
+/** 실습 시작, 종료, 활동 기록과 세션 조회(ADR 012). 정원은 hackforge.lab.max-concurrent=2, idle은 30m, 경고는 5m(application.properties) */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -339,6 +343,91 @@ class LabSessionApiTests {
 			.andExpect(jsonPath("$.code").value("LAB_NOT_FOUND"));
 		kim.delete("/api/labs/" + (leeSession + 999)).andExpect(status().isNotFound());
 		assertThat(jdbcTemplate.queryForObject("select status from lab_sessions", String.class)).isEqualTo("READY");
+	}
+
+	/** 시작해서 READY까지 간 세션. 마지막 활동은 10분 전 */
+	long readySession(ApiClient client) throws Exception {
+		client.post("/api/labs", startJson(challengeId)).andExpect(status().isAccepted());
+		Timestamp tenMinutesAgo = Timestamp.from(Instant.now().minus(Duration.ofMinutes(10)).truncatedTo(ChronoUnit.MICROS));
+		jdbcTemplate.update("update lab_sessions set status = 'READY', ready_at = ?, last_activity_at = ?", tenMinutesAgo,
+				tenMinutesAgo);
+		return onlySessionId();
+	}
+
+	Instant lastActivityAt() {
+		return jdbcTemplate.queryForObject("select last_activity_at from lab_sessions", Timestamp.class).toInstant();
+	}
+
+	/** idle 기한은 마지막 활동 + 30m, 경고는 기한 5m 전. READY가 아니면 둘 다 없다 */
+	@Test
+	void readySessionHasIdleDeadlineAndWarning() throws Exception {
+		ApiClient kim = approved("kim");
+		long id = readySession(kim);
+		Instant last = lastActivityAt();
+
+		kim.get("/api/labs/" + id)
+			.andExpect(jsonPath("$.idleDeadline").value(last.plus(Duration.ofMinutes(30)).toString()))
+			.andExpect(jsonPath("$.idleWarningAt").value(last.plus(Duration.ofMinutes(25)).toString()));
+
+		jdbcTemplate.update("update lab_sessions set status = 'TERMINATING', end_reason = 'USER'");
+		kim.get("/api/labs/" + id)
+			.andExpect(jsonPath("$.idleDeadline").value(nullValue()))
+			.andExpect(jsonPath("$.idleWarningAt").value(nullValue()));
+	}
+
+	/** [계속하기]는 마지막 활동을 지금으로 바꾸고 늘어난 기한을 응답한다. version을 올려서 그 전에 읽은 reconciler의 idle 종료가 실패한다 */
+	@Test
+	void activityExtendsIdleDeadline() throws Exception {
+		ApiClient kim = approved("kim");
+		long id = readySession(kim);
+		Instant before = lastActivityAt();
+		long version = jdbcTemplate.queryForObject("select version from lab_sessions", Long.class);
+
+		String body = kim.post("/api/labs/" + id + "/activity", null)
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("READY"))
+			.andReturn().getResponse().getContentAsString();
+
+		Instant after = lastActivityAt();
+		assertThat(after).isAfter(before.plus(Duration.ofMinutes(9)));
+		assertThat(body).contains("\"idleDeadline\":\"" + after.plus(Duration.ofMinutes(30)) + "\"");
+		assertThat(jdbcTemplate.queryForObject("select version from lab_sessions", Long.class)).isGreaterThan(version);
+	}
+
+	@Test
+	void activityOnSessionNotReadyIsConflict() throws Exception {
+		ApiClient kim = approved("kim");
+		kim.post("/api/labs", startJson(challengeId)).andExpect(status().isAccepted());
+		long id = onlySessionId();
+
+		for (String status : List.of("CREATING", "INITIALIZING", "TERMINATING", "DELETED")) {
+			jdbcTemplate.update("update lab_sessions set status = ?", status);
+			kim.post("/api/labs/" + id + "/activity", null)
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("LAB_NOT_READY"));
+		}
+	}
+
+	@Test
+	void activityOnOtherLearnersSessionIsNotFound() throws Exception {
+		long leeSession = insertSession("lee", "READY");
+
+		approved("kim").post("/api/labs/" + leeSession + "/activity", null)
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("LAB_NOT_FOUND"));
+	}
+
+	/** fe의 상태 polling은 활동이 아니다 */
+	@Test
+	void statusQueryIsNotActivity() throws Exception {
+		ApiClient kim = approved("kim");
+		long id = readySession(kim);
+		Instant before = lastActivityAt();
+
+		kim.get("/api/labs/" + id).andExpect(status().isOk());
+		kim.get("/api/labs/current").andExpect(status().isOk());
+
+		assertThat(lastActivityAt()).isEqualTo(before);
 	}
 
 	@Test
