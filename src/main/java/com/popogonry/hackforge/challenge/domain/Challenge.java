@@ -12,7 +12,10 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** 문제(ADR 012). 등록 방식은 #7에서 정하고, 지금은 migration과 개발 seed로만 들어간다. */
+/**
+ * 문제(ADR 012, ADR 014). Challenge 저장소의 register.sh가 DB에 직접 넣는다(등록 API 없음).
+ * 해답, 검증 스크립트, 힌트 컬럼은 쓰는 기능(#9, #10, #11)에서 매핑한다.
+ */
 @Entity
 @Table(name = "challenges")
 @Getter
@@ -29,6 +32,9 @@ public class Challenge {
 
 	/** 지금 쓰는 Challenge 이미지(태그 포함) */
 	private String image;
+
+	/** 문제 목록에 보이는 설명(Markdown) */
+	private String description;
 
 	private Instant createdAt;
 

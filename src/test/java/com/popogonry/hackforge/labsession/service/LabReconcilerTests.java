@@ -21,6 +21,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.convention.TestBean;
 
 import com.popogonry.hackforge.TestcontainersConfiguration;
+import com.popogonry.hackforge.challenge.TestChallenges;
 import com.popogonry.hackforge.labsession.cluster.FakeLabCluster;
 import com.popogonry.hackforge.labsession.cluster.LabCluster;
 import com.popogonry.hackforge.labsession.cluster.LabPodStatus;
@@ -70,9 +71,7 @@ class LabReconcilerTests {
 		jdbcTemplate.update("delete from challenges");
 		jdbcTemplate.update("delete from spring_session");
 		jdbcTemplate.update("delete from users");
-		challengeId = jdbcTemplate.queryForObject("""
-				insert into challenges (slug, title, image) values ('test-web', '테스트', 'test-web:0.1.0') returning id
-				""", Long.class);
+		challengeId = TestChallenges.insert(jdbcTemplate, "test-web", "테스트", "test-web:0.1.0");
 		userId = newUser("kim");
 	}
 
