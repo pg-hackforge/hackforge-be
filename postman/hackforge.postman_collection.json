@@ -101,6 +101,22 @@
       "description": "6번 폴더에서 발급받아 채워짐"
     },
     {
+      "key": "challengeSlug",
+      "value": "sqli-login"
+    },
+    {
+      "key": "challengeId",
+      "value": ""
+    },
+    {
+      "key": "labId",
+      "value": ""
+    },
+    {
+      "key": "pollCount",
+      "value": ""
+    },
+    {
       "key": "xsrf",
       "value": ""
     }
@@ -1458,6 +1474,572 @@
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"{{password}}\"\n}"
             }
+          }
+        },
+        {
+          "name": "로그아웃",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. 문제 목록",
+      "description": "로그인한 사용자는 승인 전이어도 문제 목록을 본다. 실습 시작은 승인된 계정만 된다. 응답에는 id, slug, 제목, 설명만 있고 힌트, 해답, 검증 스크립트는 없다(ADR 014).\n문제는 문제 저장소의 register.sh로 등록한다(hackforge-docs infra/lab-operations.md 4절). 실습 폴더는 challengeSlug(기본 sqli-login) 문제로 시작한다.",
+      "item": [
+        {
+          "name": "승인 대기 계정 로그인 (잠금 시연 계정)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.status = PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "문제 목록",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "const c = list.find(x => x.slug === pm.collectionVariables.get('challengeSlug'));",
+                  "pm.test('{{challengeSlug}} 있음', () => pm.expect(c).to.be.an('object'));",
+                  "if (c) pm.collectionVariables.set('challengeId', c.id);",
+                  "pm.test('힌트, 해답, 스크립트 없음', () => list.forEach(x => pm.expect(x).to.have.all.keys('id', 'slug', 'title', 'description')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/challenges",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "challenges"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "승인 전 실습 시작 (거절)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));",
+                  "pm.test('code ACCOUNT_NOT_APPROVED', () => pm.expect(pm.response.json().code).to.eql('ACCOUNT_NOT_APPROVED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": {{challengeId}}\n}"
+            }
+          }
+        },
+        {
+          "name": "로그아웃",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. 실습",
+      "description": "시작 요청은 세션 행만 만들고 202로 바로 응답한다. reconciler가 3초마다 namespace와 Pod를 만들고 상태를 CREATING → INITIALIZING → READY로 바꾼다(ADR 012). 개발 VM에서 sqli-login은 READY까지 약 70초.\n준비: bootRun 전에 환경 변수 HACKFORGE_LAB_KUBECONFIG에 백엔드 kubeconfig 경로를 넣는다(hackforge-be CLAUDE.md). 문제 이미지가 노드에 import돼 있어야 한다.\n'상태 조회'와 '종료 확인'은 손으로 보낼 때는 원하는 상태가 될 때까지 다시 누르고, Runner에서는 3초 간격으로 알아서 반복한다.\nREADY가 된 뒤 공격과 방어는 관리자 kubectl로 Pod 안에서 한다. 학습자용 API는 #8(공격 대상 화면과 웹 터미널), #9(공격 검증), #11(방어 검증)에서 만든다.",
+      "item": [
+        {
+          "name": "학습자 로그인 (승인됨)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.status = APPROVED', () => pm.expect(pm.response.json().status).to.eql('APPROVED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{learnerEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "진행 중 세션 없음",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "current"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "실습 시작",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.test('.status = CREATING', () => pm.expect(pm.response.json().status).to.eql('CREATING'));",
+                  "pm.collectionVariables.set('labId', pm.response.json().id);",
+                  "pm.collectionVariables.set('pollCount', 0);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": {{challengeId}}\n}"
+            }
+          }
+        },
+        {
+          "name": "한 번 더 시작 (거절)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('code LAB_ALREADY_ACTIVE', () => pm.expect(pm.response.json().code).to.eql('LAB_ALREADY_ACTIVE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": {{challengeId}}\n}"
+            }
+          }
+        },
+        {
+          "name": "준비 전 [계속하기] (거절)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('code LAB_NOT_READY', () => pm.expect(pm.response.json().code).to.eql('LAB_NOT_READY'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/activity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "activity"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "상태 조회 (READY까지)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Runner로 반복할 때만 3초 쉰다",
+                  "if (pm.collectionVariables.get('pollCount')) {",
+                  "  setTimeout(() => {}, 3000);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const s = pm.response.json().status;",
+                  "const n = (pm.collectionVariables.get('pollCount') || 0) + 1;",
+                  "if (![\"READY\", \"FAILED\"].includes(s) && n < 100) {",
+                  "  pm.collectionVariables.set('pollCount', n);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.collectionVariables.set('pollCount', 0);",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.status = READY', () => pm.expect(pm.response.json().status).to.eql('READY'));",
+                  "pm.test('idle 종료 예정 시각 있음', () => pm.expect(pm.response.json().idleDeadline).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}"
+              ]
+            },
+            "description": "READY가 되면 터미널에서 Pod를 확인하고 공격과 방어를 진행한다. namespace는 lab-<labId>, Pod 이름은 lab."
+          }
+        },
+        {
+          "name": "현재 세션",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.id = labId', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('labId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "current"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "[계속하기] (idle 종료 시각 연장)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('idle 종료 예정 시각 있음', () => pm.expect(pm.response.json().idleDeadline).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/activity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "activity"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "실습 종료",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.test('.status = TERMINATING', () => pm.expect(pm.response.json().status).to.eql('TERMINATING'));",
+                  "pm.collectionVariables.set('pollCount', 0);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "종료 확인 (DELETED까지)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Runner로 반복할 때만 3초 쉰다",
+                  "if (pm.collectionVariables.get('pollCount')) {",
+                  "  setTimeout(() => {}, 3000);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const s = pm.response.json().status;",
+                  "const n = (pm.collectionVariables.get('pollCount') || 0) + 1;",
+                  "if (![\"DELETED\", \"FAILED\"].includes(s) && n < 100) {",
+                  "  pm.collectionVariables.set('pollCount', n);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.collectionVariables.set('pollCount', 0);",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.status = DELETED', () => pm.expect(pm.response.json().status).to.eql('DELETED'));",
+                  "pm.test('.endReason = USER', () => pm.expect(pm.response.json().endReason).to.eql('USER'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}"
+              ]
+            },
+            "description": "namespace 삭제가 끝나야 DELETED가 된다(약 40초)."
           }
         },
         {
