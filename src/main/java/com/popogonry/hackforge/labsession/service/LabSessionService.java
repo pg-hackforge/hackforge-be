@@ -49,7 +49,7 @@ public class LabSessionService {
 	 * 진행 중 세션이 있는 학습자는 정원이 차 있어도 409로 기존 세션을 안내받는다.
 	 */
 	@Transactional
-	public LabSession start(long userId, long challengeId) {
+	public LabSession startLab(long userId, long challengeId) {
 		User user = userService.getCurrentUser(userId);
 		if (user.getStatus() != UserStatus.APPROVED) {
 			throw new ApiException(ErrorCode.ACCOUNT_NOT_APPROVED);
@@ -72,22 +72,22 @@ public class LabSessionService {
 		}
 	}
 
-	public Optional<LabSession> findCurrent(long userId) {
+	public Optional<LabSession> findCurrentLab(long userId) {
 		return labSessionRepository.findByUserIdAndStatusNotIn(userId, LabStatus.ENDED);
 	}
 
 	/** 상태만 바꾸고 응답한다. 환경 삭제는 reconciler가 한다. 이미 종료 중이거나 끝났으면 그대로 둔다 */
 	@Transactional
-	public LabSession end(long id, long userId) {
+	public LabSession endLab(long id, long userId) {
 		labSessionRepository.terminate(id, userId, ENDABLE, LabStatus.TERMINATING, LabEndReason.USER, clock.instant());
-		return get(id, userId);
+		return getLab(id, userId);
 	}
 
 	/** [계속하기]. 남의 세션과 없는 세션은 404, {@code READY}가 아니면 409 */
 	@Transactional
-	public LabSession recordActivity(long id, long userId) {
+	public LabSession recordLabActivity(long id, long userId) {
 		int updated = labSessionRepository.recordActivity(id, userId, LabStatus.READY, clock.instant());
-		LabSession session = get(id, userId);
+		LabSession session = getLab(id, userId);
 		if (updated == 0) {
 			throw new ApiException(ErrorCode.LAB_NOT_READY);
 		}
@@ -95,7 +95,7 @@ public class LabSessionService {
 	}
 
 	/** 남의 세션도 없는 세션과 같은 404. 존재 여부를 노출하지 않는다 */
-	public LabSession get(long id, long userId) {
+	public LabSession getLab(long id, long userId) {
 		return labSessionRepository.findByIdAndUserId(id, userId)
 			.orElseThrow(() -> new ApiException(ErrorCode.LAB_NOT_FOUND));
 	}

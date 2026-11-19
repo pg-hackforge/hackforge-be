@@ -25,13 +25,13 @@ class UserController {
 
 	/** 승인 상태는 세션이 아니라 DB에서 매번 읽는다. */
 	@GetMapping("/api/me")
-	UserResponse me(Authentication authentication) {
+	UserResponse getMe(Authentication authentication) {
 		return UserResponse.from(userService.getCurrentUser(Long.parseLong(authentication.getName())));
 	}
 
 	@PutMapping("/api/me/password")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	void changePassword(@Valid @RequestBody ChangePasswordRequest body, Authentication authentication,
+	void changeMyPassword(@Valid @RequestBody ChangePasswordRequest body, Authentication authentication,
 			HttpSession session) {
 		userService.changePassword(Long.parseLong(authentication.getName()), session.getId(), body.currentPassword(),
 				body.newPassword());

@@ -31,25 +31,25 @@ class AdminUserController {
 	private final AdminUserService adminUserService;
 
 	@GetMapping("/api/admin/users")
-	List<AdminUserResponse> list(@RequestParam(defaultValue = "PENDING") UserStatus status) {
-		return adminUserService.list(status).stream().map(AdminUserResponse::from).toList();
+	List<AdminUserResponse> listUsers(@RequestParam(defaultValue = "PENDING") UserStatus status) {
+		return adminUserService.listUsers(status).stream().map(AdminUserResponse::from).toList();
 	}
 
 	@PostMapping("/api/admin/users/{id}/approve")
-	AdminUserResponse approve(@PathVariable long id) {
-		return AdminUserResponse.from(adminUserService.approve(id));
+	AdminUserResponse approveUser(@PathVariable long id) {
+		return AdminUserResponse.from(adminUserService.approveUser(id));
 	}
 
 	@PostMapping("/api/admin/users/{id}/reject")
-	AdminUserResponse reject(@PathVariable long id) {
-		return AdminUserResponse.from(adminUserService.reject(id));
+	AdminUserResponse rejectUser(@PathVariable long id) {
+		return AdminUserResponse.from(adminUserService.rejectUser(id));
 	}
 
 	@PutMapping("/api/admin/users/{id}/role")
-	AdminUserResponse changeRole(@PathVariable long id, @Valid @RequestBody ChangeRoleRequest body,
+	AdminUserResponse changeUserRole(@PathVariable long id, @Valid @RequestBody ChangeRoleRequest body,
 			Authentication authentication) {
 		long adminId = Long.parseLong(authentication.getName());
-		return AdminUserResponse.from(adminUserService.changeRole(adminId, id, body.role()));
+		return AdminUserResponse.from(adminUserService.changeUserRole(adminId, id, body.role()));
 	}
 
 	/** 비밀번호가 담긴 응답이라 브라우저·프록시가 저장하지 않게 한다. */
