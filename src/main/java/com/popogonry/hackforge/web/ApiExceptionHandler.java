@@ -44,7 +44,7 @@ class ApiExceptionHandler {
 	/** 경로·쿼리 값의 형식이 틀림. 예: `?status=FOO`, 숫자가 아닌 id. */
 	@ExceptionHandler
 	ResponseEntity<Problem> typeMismatch(MethodArgumentTypeMismatchException e) {
-		List<Problem.FieldError> errors = List.of(new Problem.FieldError(e.getName(), "허용되지 않는 값입니다"));
+		List<Problem.FieldError> errors = List.of(new Problem.FieldError(e.getName(), "허용되지 않는 값이에요"));
 		return respond(Problem.of(ErrorCode.VALIDATION_FAILED, errors), HttpHeaders.EMPTY);
 	}
 
