@@ -2,12 +2,15 @@ package com.popogonry.hackforge.challenge.service;
 
 import java.util.List;
 
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.popogonry.hackforge.challenge.domain.Challenge;
-import com.popogonry.hackforge.challenge.repository.ChallengeRepository;
+import com.popogonry.hackforge.challenge.domain.ChallengeSort;
+import com.popogonry.hackforge.challenge.dto.ChallengeFacetsResponse;
+import com.popogonry.hackforge.challenge.dto.ChallengePageResponse;
+import com.popogonry.hackforge.challenge.dto.DifficultyCountResponse;
+import com.popogonry.hackforge.challenge.repository.ChallengeQueryRepository;
+import com.popogonry.hackforge.challenge.repository.ChallengeQueryRepository.Filter;
 
 import lombok.RequiredArgsConstructor;
 
@@ -16,10 +19,23 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class ChallengeService {
 
-	private final ChallengeRepository challengeRepository;
+	public static final int PAGE_SIZE = 20;
 
-	public List<Challenge> list() {
-		return challengeRepository.findAll(Sort.by("id"));
+	private final ChallengeQueryRepository challengeQueryRepository;
+
+	/** 범위를 넘은 페이지는 빈 목록이고 개수는 그대로다 */
+	public ChallengePageResponse list(Filter filter, ChallengeSort sort, int page) {
+		long totalItems = challengeQueryRepository.count(filter);
+		int totalPages = (int) ((totalItems + PAGE_SIZE - 1) / PAGE_SIZE);
+		List<DifficultyCountResponse> difficulties = challengeQueryRepository.countByDifficulty(filter)
+			.entrySet()
+			.stream()
+			.map(e -> new DifficultyCountResponse(e.getKey(), e.getValue()))
+			.toList();
+		return new ChallengePageResponse(
+				challengeQueryRepository.findPage(filter, sort, PAGE_SIZE, (long) (page - 1) * PAGE_SIZE), page,
+				PAGE_SIZE, totalItems, totalPages,
+				new ChallengeFacetsResponse(challengeQueryRepository.countByCategory(filter), difficulties));
 	}
 
 }
