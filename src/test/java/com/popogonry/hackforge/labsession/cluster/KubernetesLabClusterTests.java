@@ -23,6 +23,8 @@ import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1SecurityContext;
 import io.kubernetes.client.util.Config;
 
+import com.popogonry.hackforge.labsession.domain.LabPrepStep;
+
 /**
  * 개발 VM 클러스터에 실제로 만들고 지운다. {@code ./gradlew clusterTest}로만 실행하고 {@code build}에서는 빠진다.
  * 환경 변수 {@code HACKFORGE_LAB_KUBECONFIG}에 백엔드 kubeconfig(hackforge-docs {@code infra/cluster-setup.md} 8.3) 경로가 필요하고,
@@ -86,6 +88,10 @@ class KubernetesLabClusterTests {
 		assertThat(pod.getSpec().getDnsConfig().getSearches()).isNullOrEmpty();
 
 		waitUntil(Duration.ofMinutes(2), () -> labCluster.getPodStatus(SESSION) == LabPodStatus.READY);
+
+		// ADR 021. 백엔드는 이 namespace의 RoleBinding(lab-log-reader)으로만 Pod 로그를 읽을 수 있다.
+		// 백엔드에는 RoleBinding 조회 권한이 없으므로 로그를 읽은 것으로 RoleBinding을 확인한다. 시작 스크립트의 단계 기록이 모두 있다
+		assertThat(LabPrepStep.fromStartLog(labCluster.readPodLog(SESSION))).isEqualTo(LabPrepStep.STARTING);
 
 		labCluster.deletePod(SESSION);
 		assertThat(labCluster.getPodStatus(SESSION)).isIn(LabPodStatus.DELETING, LabPodStatus.ABSENT);

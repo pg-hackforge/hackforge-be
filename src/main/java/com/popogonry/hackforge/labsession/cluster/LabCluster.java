@@ -9,12 +9,21 @@ import java.util.Set;
  */
 public interface LabCluster {
 
-	/** namespace, NetworkPolicy {@code deny-all}, ResourceQuota {@code lab} 순서로 만든다. */
+	/**
+	 * namespace, NetworkPolicy {@code deny-all}, ResourceQuota {@code lab}, Pod 로그 읽기 RoleBinding {@code lab-log-reader}
+	 * 순서로 만든다.
+	 */
 	void createNamespace(long sessionId);
 
 	void createPod(long sessionId, String image);
 
 	LabPodStatus getPodStatus(long sessionId);
+
+	/**
+	 * Pod가 지금까지 출력한 로그를 처음부터 읽는다(크기 상한 있음). 준비 단계 판정에만 쓴다(ADR 021).
+	 * 컨테이너가 시작 전이거나 권한이 아직 반영되지 않았으면 {@link LabClusterException}.
+	 */
+	String readPodLog(long sessionId);
 
 	void deletePod(long sessionId);
 

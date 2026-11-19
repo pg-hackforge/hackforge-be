@@ -37,7 +37,8 @@ public interface LabSessionRepository extends JpaRepository<LabSession, Long> {
 	@Modifying
 	@Query("""
 			update LabSession s
-			set s.status = :terminating, s.endReason = :reason, s.statusChangedAt = :now, s.version = s.version + 1
+			set s.status = :terminating, s.endReason = :reason, s.prepStep = null, s.statusChangedAt = :now,
+			  s.version = s.version + 1
 			where s.id = :id and s.userId = :userId and s.status in :from
 			""")
 	int terminate(long id, long userId, Collection<LabStatus> from, LabStatus terminating, LabEndReason reason, Instant now);

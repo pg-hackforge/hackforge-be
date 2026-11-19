@@ -382,6 +382,127 @@ class LabReconcilerTests {
 		assertThat(statusOf(id)).isEqualTo("TERMINATING");
 	}
 
+	String prepStepOf(long id) {
+		return (String) row(id).get("prep_step");
+	}
+
+	/** 시작 스크립트(Challenge 저장소 hackforge/entrypoint.sh)가 남기는 단계 기록. dockerd 로그가 사이에 섞인다 */
+	static String startLog(String... steps) {
+		StringBuilder log = new StringBuilder();
+		for (String step : steps) {
+			log.append("hackforge: 1763510400 ").append(step).append('\n');
+			log.append("time=\"2026-11-19T00:00:00Z\" level=info msg=\"dockerd 로그\"\n");
+		}
+		return log.toString();
+	}
+
+	/** ADR 021. Pod를 만들면 CONTAINER, 단계 기록마다 LOADING, STARTING, Ready면 null */
+	@Test
+	void prepStepFollowsStartLogUntilReady() {
+		long id = newSession(userId);
+		labReconciler.reconcileAll();
+		assertThat(prepStepOf(id)).isEqualTo("CONTAINER");
+
+		cluster.setPodLog(id, startLog("start"));
+		labReconciler.reconcileAll();
+		assertThat(prepStepOf(id)).isEqualTo("CONTAINER");
+
+		cluster.setPodLog(id, startLog("start", "dockerd-ready"));
+		labReconciler.reconcileAll();
+		assertThat(prepStepOf(id)).isEqualTo("LOADING");
+
+		cluster.setPodLog(id, startLog("start", "dockerd-ready", "images-loaded"));
+		labReconciler.reconcileAll();
+		assertThat(prepStepOf(id)).isEqualTo("STARTING");
+
+		cluster.setPodLog(id, startLog("start", "dockerd-ready", "images-loaded", "compose-up"));
+		labReconciler.reconcileAll();
+		assertThat(prepStepOf(id)).isEqualTo("STARTING");
+
+		cluster.setPodStatus(id, LabPodStatus.READY);
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("READY");
+		assertThat(prepStepOf(id)).isNull();
+	}
+
+	/** 단계 기록은 줄 전체가 맞아야 한다. 다른 줄 안에 같은 단어가 있어도 넘어가지 않는다 */
+	@Test
+	void stepWordInsideOtherLineIsIgnored() {
+		long id = newSession(userId);
+		labReconciler.reconcileAll();
+
+		cluster.setPodLog(id, "level=info msg=\"waiting for images-loaded\"\nhackforge: 1 dockerd-ready-ish\n");
+		labReconciler.reconcileAll();
+
+		assertThat(prepStepOf(id)).isEqualTo("CONTAINER");
+	}
+
+	/** 로그를 못 읽어도(권한 반영 전, 컨테이너 시작 전) 단계를 유지하고 Ready 판정은 그대로 한다 */
+	@Test
+	void logReadFailureKeepsStepAndStillBecomesReady() {
+		long id = newSession(userId);
+		labReconciler.reconcileAll();
+		cluster.setPodLog(id, startLog("start", "dockerd-ready"));
+		labReconciler.reconcileAll();
+
+		cluster.failPodLog(id);
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("INITIALIZING");
+		assertThat(prepStepOf(id)).isEqualTo("LOADING");
+
+		cluster.setPodStatus(id, LabPodStatus.READY);
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("READY");
+	}
+
+	/** 학습자가 출력을 바꾸거나 로그가 잘려 앞 단계만 보여도 되돌아가지 않는다 */
+	@Test
+	void prepStepNeverGoesBack() {
+		long id = newSession(userId);
+		labReconciler.reconcileAll();
+		cluster.setPodLog(id, startLog("start", "dockerd-ready", "images-loaded"));
+		labReconciler.reconcileAll();
+
+		cluster.setPodLog(id, startLog("start"));
+		labReconciler.reconcileAll();
+
+		assertThat(prepStepOf(id)).isEqualTo("STARTING");
+	}
+
+	/** 재시도하면 처음 단계로 돌아간다. 새 Pod를 만들면 다시 CONTAINER */
+	@Test
+	void retryResetsPrepStep() {
+		long id = newSession(userId);
+		labReconciler.reconcileAll();
+		cluster.setPodLog(id, startLog("start", "dockerd-ready", "images-loaded"));
+		labReconciler.reconcileAll();
+		cluster.setPodStatus(id, LabPodStatus.FAILED);
+
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("CREATING");
+		assertThat(prepStepOf(id)).isEqualTo("SPACE");
+
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("INITIALIZING");
+		assertThat(prepStepOf(id)).isEqualTo("CONTAINER");
+	}
+
+	/** 재시도 후에도 실패하면 준비가 끝난 것이라 단계가 없다 */
+	@Test
+	void failedStartClearsPrepStep() {
+		long id = newSession(userId);
+		labReconciler.reconcileAll();
+		cluster.setPodStatus(id, LabPodStatus.FAILED);
+		labReconciler.reconcileAll();
+		labReconciler.reconcileAll();
+		cluster.setPodStatus(id, LabPodStatus.FAILED);
+
+		labReconciler.reconcileAll();
+
+		assertThat(statusOf(id)).isEqualTo("TERMINATING");
+		assertThat(prepStepOf(id)).isNull();
+	}
+
 	static class MutableClock extends Clock {
 
 		private Instant instant = T0;

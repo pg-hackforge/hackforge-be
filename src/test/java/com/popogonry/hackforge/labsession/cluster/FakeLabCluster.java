@@ -6,6 +6,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
+import io.kubernetes.client.openapi.ApiException;
+
 /**
  * 메모리에만 상태를 두는 {@link LabCluster}. Pod 상태는 테스트가 {@link #setPodStatus}로 바꾼다.
  * 삭제는 바로 끝난 것으로 처리한다({@link #holdNamespaceDeletion}으로 미룰 수 있음). Spring context에 하나만 있으므로 테스트마다 {@link #reset}한다.
@@ -19,6 +21,10 @@ public class FakeLabCluster implements LabCluster {
 	private final Map<Long, String> images = new HashMap<>();
 
 	private final Map<Long, RuntimeException> failures = new HashMap<>();
+
+	private final Map<Long, String> logs = new HashMap<>();
+
+	private final Map<Long, RuntimeException> logFailures = new HashMap<>();
 
 	private Runnable onCreatePod = () -> {
 	};
@@ -49,10 +55,22 @@ public class FakeLabCluster implements LabCluster {
 		return pods.getOrDefault(sessionId, LabPodStatus.ABSENT);
 	}
 
+	/** 로그를 넣지 않았으면 빈 문자열 */
+	@Override
+	public String readPodLog(long sessionId) {
+		throwIfFailing(sessionId);
+		RuntimeException failure = logFailures.get(sessionId);
+		if (failure != null) {
+			throw failure;
+		}
+		return logs.getOrDefault(sessionId, "");
+	}
+
 	@Override
 	public void deletePod(long sessionId) {
 		throwIfFailing(sessionId);
 		pods.remove(sessionId);
+		logs.remove(sessionId);
 	}
 
 	@Override
@@ -78,6 +96,16 @@ public class FakeLabCluster implements LabCluster {
 
 	public void setPodStatus(long sessionId, LabPodStatus status) {
 		pods.put(sessionId, status);
+	}
+
+	/** 지금까지 Pod가 출력한 로그 전체 */
+	public void setPodLog(long sessionId, String log) {
+		logs.put(sessionId, log);
+	}
+
+	/** 로그 읽기만 403으로 실패한다(RoleBinding 권한 반영 전 흉내) */
+	public void failPodLog(long sessionId) {
+		logFailures.put(sessionId, new LabClusterException(new ApiException(403, "pods \"lab\" is forbidden")));
 	}
 
 	/** 마지막으로 만든 Pod의 image. 한 번도 만들지 않았으면 null */
@@ -106,6 +134,8 @@ public class FakeLabCluster implements LabCluster {
 		pods.clear();
 		images.clear();
 		failures.clear();
+		logs.clear();
+		logFailures.clear();
 		onCreatePod = () -> {
 		};
 	}

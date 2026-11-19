@@ -45,6 +45,10 @@ public class LabSession {
 	@Enumerated(EnumType.STRING)
 	private LabEndReason endReason;
 
+	/** 준비 단계(ADR 021). {@code CREATING}, {@code INITIALIZING}에서만 값이 있다 */
+	@Enumerated(EnumType.STRING)
+	private LabPrepStep prepStep;
+
 	private short startAttempts;
 
 	private Instant statusChangedAt;
@@ -67,6 +71,7 @@ public class LabSession {
 		this.challenge = challenge;
 		this.image = challenge.getImage();
 		this.status = LabStatus.CREATING;
+		this.prepStep = LabPrepStep.SPACE;
 		this.statusChangedAt = now;
 		this.createdAt = now;
 	}
@@ -74,11 +79,25 @@ public class LabSession {
 	/** Pod 생성 요청이 들어감. 이제 Ready를 기다린다 */
 	public void podCreated(Instant now) {
 		changeStatus(LabStatus.INITIALIZING, now);
+		this.prepStep = LabPrepStep.CONTAINER;
+	}
+
+	/** Pod 로그로 본 단계. 앞으로만 간다(학습자가 출력을 바꾸거나 로그가 잘려도 되돌아가지 않음) */
+	public void advancePrepStep(LabPrepStep step) {
+		if (status == LabStatus.INITIALIZING && step.compareTo(prepStep) > 0) {
+			this.prepStep = step;
+		}
+	}
+
+	/** 첫 생성에 실패해 다시 만드는 중 */
+	public boolean isRetrying() {
+		return prepStep != null && startAttempts > 0;
 	}
 
 	/** idle 시간은 이때부터 센다(ADR 012) */
 	public void ready(Instant now) {
 		changeStatus(LabStatus.READY, now);
+		this.prepStep = null;
 		this.readyAt = now;
 		this.lastActivityAt = now;
 	}
@@ -91,12 +110,14 @@ public class LabSession {
 	/** 생성 실패 후 다시 만든다. 지금까지 재시도한 횟수를 {@code startAttempts}에 센다 */
 	public void retry(Instant now) {
 		changeStatus(LabStatus.CREATING, now);
+		this.prepStep = LabPrepStep.SPACE;
 		this.startAttempts++;
 	}
 
 	/** 환경 삭제 시작. 생성 실패로 끝내면 사유가 없고(null) 삭제가 끝난 뒤 {@code FAILED}가 된다 */
 	public void terminate(LabEndReason reason, Instant now) {
 		changeStatus(LabStatus.TERMINATING, now);
+		this.prepStep = null;
 		this.endReason = reason;
 	}
 

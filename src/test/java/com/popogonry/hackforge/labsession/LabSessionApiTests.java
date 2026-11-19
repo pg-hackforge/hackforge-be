@@ -107,6 +107,8 @@ class LabSessionApiTests {
 			.andExpect(jsonPath("$.challengeId").value(challengeId))
 			.andExpect(jsonPath("$.challengeTitle").value("테스트 문제"))
 			.andExpect(jsonPath("$.status").value("CREATING"))
+			.andExpect(jsonPath("$.prepStep").value("SPACE"))
+			.andExpect(jsonPath("$.retrying").value(false))
 			.andExpect(jsonPath("$.endReason").value(nullValue()))
 			.andExpect(jsonPath("$.readyAt").value(nullValue()))
 			.andExpect(jsonPath("$.idleDeadline").value(nullValue()))
@@ -259,6 +261,39 @@ class LabSessionApiTests {
 			.andExpect(jsonPath("$.status").value("DELETED"))
 			.andExpect(jsonPath("$.endReason").value("USER"))
 			.andExpect(jsonPath("$.endedAt").isString());
+	}
+
+	/** ADR 021. 준비 중에만 단계가 있고, 재시도 중이면 retrying. 끝난 뒤에는 단계 없이 false */
+	@Test
+	void sessionShowsPrepStepAndRetryingOnlyWhilePreparing() throws Exception {
+		ApiClient kim = approved("kim");
+		kim.post("/api/labs", startJson(challengeId)).andExpect(status().isAccepted());
+		long id = onlySessionId();
+
+		jdbcTemplate.update("update lab_sessions set status = 'INITIALIZING', prep_step = 'LOADING', start_attempts = 1");
+		kim.get("/api/labs/" + id)
+			.andExpect(jsonPath("$.prepStep").value("LOADING"))
+			.andExpect(jsonPath("$.retrying").value(true));
+
+		jdbcTemplate.update("update lab_sessions set status = 'READY', prep_step = null, ready_at = now(), last_activity_at = now()");
+		kim.get("/api/labs/" + id)
+			.andExpect(jsonPath("$.prepStep").value(nullValue()))
+			.andExpect(jsonPath("$.retrying").value(false));
+	}
+
+	/** 준비 중에 끝내면 단계가 없어진다 */
+	@Test
+	void endWhilePreparingClearsPrepStep() throws Exception {
+		ApiClient kim = approved("kim");
+		kim.post("/api/labs", startJson(challengeId)).andExpect(status().isAccepted());
+		long id = onlySessionId();
+		jdbcTemplate.update("update lab_sessions set status = 'INITIALIZING', prep_step = 'STARTING'");
+
+		kim.delete("/api/labs/" + id)
+			.andExpect(jsonPath("$.status").value("TERMINATING"))
+			.andExpect(jsonPath("$.prepStep").value(nullValue()))
+			.andExpect(jsonPath("$.retrying").value(false));
+		assertThat(jdbcTemplate.queryForObject("select prep_step from lab_sessions", String.class)).isNull();
 	}
 
 	@Test
