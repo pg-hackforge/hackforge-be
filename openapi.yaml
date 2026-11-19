@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.4.0
+  version: 0.5.0
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -54,6 +54,20 @@ tags:
       idle 종료: `READY` 이후 `idleDeadline`까지 활동이 없으면 서버가 세션을 종료한다(`IDLE`).
       클라이언트는 `idleWarningAt`부터 종료 경고와 [계속하기]를 표시하고,
       [계속하기]는 `POST /api/labs/{id}/activity`를 호출한다.
+
+
+      공격 대상 화면(hackforge-docs ADR 022): 백엔드는 이 API와 다른 포트(공격 대상 포트, 개발 8081)를 연다.
+      `READY` 세션 응답의 `targetUrl`을 iframe으로 연다. 그 포트로 온 요청은 경로와 관계없이 모두
+      로그인한 학습자의 `READY` 세션 Pod 안 공격 대상 웹(`127.0.0.1:8080`)으로 전달되고, 이 API는 그 포트에서 응답하지 않는다.
+      로그인 확인은 `SESSION` 쿠키로 한다(쿠키는 포트를 구분하지 않아 그 포트로도 전송됨). CSRF 헤더는 필요 없다.
+      공격 대상 앱으로는 플랫폼 쿠키(`SESSION`, `XSRF-TOKEN`)와 `X-XSRF-TOKEN` 헤더를 넘기지 않고,
+      공격 대상 앱이 플랫폼 쿠키 이름으로 심는 `Set-Cookie`는 지운다. 응답에는 `Content-Security-Policy: frame-ancestors <플랫폼 origin>`이 붙는다.
+      전달할 수 없으면 HTML 안내 페이지로 응답한다: 로그인하지 않음 401, `READY` 세션 없음 409, 공격 대상 앱이 응답하지 않음 502, 30초 초과 504.
+      공격 대상으로 가는 요청은 활동으로 집계한다.
+
+
+      웹 터미널: `GET /api/labs/{id}/terminal`을 WebSocket으로 연다. 실습 Pod의 `sh`(작업 폴더 `/app`, root)에 연결되고,
+      다시 연결하면 새 셸이다. 터미널 입력은 활동으로 집계하고 출력은 집계하지 않는다.
 security:
   - sessionCookie: []
     csrfHeader: []
@@ -542,6 +556,50 @@ paths:
           $ref: '#/components/responses/CsrfRejected'
         '404':
           $ref: '#/components/responses/LabNotFound'
+  /api/labs/{id}/terminal:
+    get:
+      tags: [lab]
+      summary: 웹 터미널(WebSocket)
+      description: >-
+        WebSocket upgrade 요청이다(`Upgrade: websocket`). 실습 Pod에 exec(TTY)로 `sh`를 띄워 연결한다(hackforge-docs ADR 022).
+
+
+        연결 전 확인: 로그인하지 않았으면 401, `Origin`이 플랫폼 origin이 아니면 403으로 upgrade를 거절한다
+        (다른 사이트가 학습자 브라우저로 터미널을 여는 것을 막음). CSRF 헤더는 필요 없다.
+
+
+        메시지: 클라이언트 → 서버의 binary 메시지는 셸 입력(바이트 그대로), text 메시지는 제어 JSON
+        `{"type":"resize","cols":<1~500>,"rows":<1~200>}`이다. 서버 → 클라이언트는 binary 메시지로 셸 출력(바이트 그대로)만 보낸다.
+        형식이 틀린 text 메시지는 무시한다.
+
+
+        서버가 닫는 코드(reason에는 이름을 넣음):
+        `1000 EXITED` 셸이 끝남,
+        `4404 LAB_NOT_FOUND` 없는 세션 또는 다른 사용자의 세션,
+        `4409 LAB_NOT_READY` 연결할 때 `READY`가 아님,
+        `4410 LAB_ENDED` 연결 중 세션이 `READY`가 아니게 됨(종료, idle 종료, 실습 환경 비정상 종료),
+        `4429 TERMINAL_LIMIT` 이 세션에 이미 터미널 3개가 열려 있음,
+        `1011 INTERNAL_ERROR` 실습 환경 연결 실패.
+        세션 확인 결과는 브라우저 WebSocket API가 upgrade 응답의 상태와 본문을 읽지 못해서, upgrade를 받은 뒤 닫는 코드로 알린다.
+        다시 연결하면 새 셸이다
+      operationId: openLabTerminal
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '101':
+          description: WebSocket 연결됨. 이후 세션 확인 결과에 따라 위의 코드로 닫힐 수 있음
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          description: '`Origin`이 플랫폼 origin이 아님(`FORBIDDEN`)'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/labs/{id}/activity:
     post:
       tags: [lab]
@@ -920,7 +978,7 @@ components:
       enum: [SPACE, CONTAINER, LOADING, STARTING]
     LabSessionResponse:
       type: object
-      required: [id, challengeId, challengeTitle, status, prepStep, retrying, createdAt]
+      required: [id, challengeId, challengeTitle, status, prepStep, retrying, targetUrl, createdAt]
       properties:
         id:
           type: integer
@@ -932,6 +990,13 @@ components:
           type: string
         status:
           $ref: '#/components/schemas/LabStatus'
+        targetUrl:
+          description: >-
+            `READY`에서만 값이 있음. 공격 대상 화면을 iframe으로 열 주소. 이 요청의 호스트(`Host`, reverse proxy 뒤라면
+            `X-Forwarded-Host`)에 공격 대상 포트를 붙여 만든다(예: `http://localhost:8081/`). 플랫폼과 같은 호스트여야
+            `SESSION` 쿠키가 전송되므로, 클라이언트는 이 값을 그대로 쓴다
+          type: [string, 'null']
+          format: uri
         prepStep:
           description: '`CREATING`, `INITIALIZING`에서만 값이 있음. 그 밖에는 `null`'
           oneOf:
