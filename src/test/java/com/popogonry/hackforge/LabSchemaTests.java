@@ -55,6 +55,16 @@ class LabSchemaTests {
 		return jdbcTemplate.queryForObject("select count(*) from lab_sessions", Long.class);
 	}
 
+	/** ADR 021 */
+	@Test
+	void unknownPrepStepIsRejected() {
+		insertSession("INITIALIZING");
+
+		jdbcTemplate.update("update lab_sessions set prep_step = 'STARTING'");
+		assertThatThrownBy(() -> jdbcTemplate.update("update lab_sessions set prep_step = 'READY'"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
 	@Test
 	void secondActiveSessionOfSameUserIsRejected() {
 		insertSession("CREATING");

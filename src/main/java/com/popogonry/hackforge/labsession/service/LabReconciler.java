@@ -10,9 +10,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.popogonry.hackforge.labsession.cluster.LabCluster;
+import com.popogonry.hackforge.labsession.cluster.LabClusterException;
 import com.popogonry.hackforge.labsession.cluster.LabPodStatus;
 import com.popogonry.hackforge.labsession.cluster.LabProperties;
 import com.popogonry.hackforge.labsession.domain.LabEndReason;
+import com.popogonry.hackforge.labsession.domain.LabPrepStep;
 import com.popogonry.hackforge.labsession.domain.LabSession;
 import com.popogonry.hackforge.labsession.domain.LabStatus;
 import com.popogonry.hackforge.labsession.repository.LabSessionRepository;
@@ -119,9 +121,24 @@ public class LabReconciler {
 			return "Pod Ready";
 		}
 		if (pod == LabPodStatus.STARTING) {
-			return timedOut(session, now) ? fail(session, now, "start-timeout 초과") : null;
+			if (timedOut(session, now)) {
+				return fail(session, now, "start-timeout 초과");
+			}
+			updatePrepStep(session);
+			return null;
 		}
 		return fail(session, now, "Pod " + pod);
+	}
+
+	/** Pod 로그의 단계 기록으로 준비 단계를 정한다(ADR 021). 못 읽으면 이전 단계를 두고 다음 주기에 다시 읽는다 */
+	private void updatePrepStep(LabSession session) {
+		try {
+			session.advancePrepStep(LabPrepStep.fromStartLog(labCluster.readPodLog(session.getId())));
+		}
+		catch (LabClusterException e) {
+			// 컨테이너 시작 전(400)과 RoleBinding 반영 전(403)에 흔하다. 준비 판정에는 영향이 없어 debug로만 남긴다
+			log.debug("실습 세션 {}: Pod 로그를 읽지 못해 준비 단계 유지. {}", session.getId(), e.getMessage());
+		}
 	}
 
 	/** 마지막 활동 뒤 idle-timeout이 지났거나, 실습 중 Pod가 죽거나(메모리·디스크 초과 등) 사라짐 */

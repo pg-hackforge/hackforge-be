@@ -4,6 +4,7 @@ import java.time.Instant;
 
 import com.popogonry.hackforge.labsession.cluster.LabProperties;
 import com.popogonry.hackforge.labsession.domain.LabEndReason;
+import com.popogonry.hackforge.labsession.domain.LabPrepStep;
 import com.popogonry.hackforge.labsession.domain.LabSession;
 import com.popogonry.hackforge.labsession.domain.LabStatus;
 
@@ -13,6 +14,8 @@ public record LabSessionResponse(
 		Long challengeId,
 		String challengeTitle,
 		LabStatus status,
+		LabPrepStep prepStep,
+		boolean retrying,
 		LabEndReason endReason,
 		Instant createdAt,
 		Instant readyAt,
@@ -26,7 +29,8 @@ public record LabSessionResponse(
 		Instant idleDeadline = session.idleDeadline(labProperties.idleTimeout());
 		Instant idleWarningAt = idleDeadline == null ? null : idleDeadline.minus(labProperties.idleWarning());
 		return new LabSessionResponse(session.getId(), session.getChallenge().getId(),
-				session.getChallenge().getTitle(), session.getStatus(), session.getEndReason(),
+				session.getChallenge().getTitle(), session.getStatus(), session.getPrepStep(), session.isRetrying(),
+				session.getEndReason(),
 				session.getCreatedAt(), session.getReadyAt(), session.getEndedAt(), idleDeadline, idleWarningAt);
 	}
 

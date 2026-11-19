@@ -18,6 +18,7 @@ import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.NetworkingV1Api;
+import io.kubernetes.client.openapi.apis.RbacAuthorizationV1Api;
 import io.kubernetes.client.openapi.models.V1Container;
 import io.kubernetes.client.openapi.models.V1ContainerStatus;
 import io.kubernetes.client.openapi.models.V1EmptyDirVolumeSource;
@@ -33,7 +34,10 @@ import io.kubernetes.client.openapi.models.V1PodSpec;
 import io.kubernetes.client.openapi.models.V1Probe;
 import io.kubernetes.client.openapi.models.V1ResourceQuota;
 import io.kubernetes.client.openapi.models.V1ResourceQuotaSpec;
+import io.kubernetes.client.openapi.models.RbacV1Subject;
 import io.kubernetes.client.openapi.models.V1ResourceRequirements;
+import io.kubernetes.client.openapi.models.V1RoleBinding;
+import io.kubernetes.client.openapi.models.V1RoleRef;
 import io.kubernetes.client.openapi.models.V1Volume;
 import io.kubernetes.client.openapi.models.V1VolumeMount;
 import io.kubernetes.client.util.Config;
@@ -62,6 +66,12 @@ class KubernetesLabCluster implements LabCluster {
 
 	/** namespace마다 Pod는 하나라 이름을 고정한다(ADR 013). 중복 생성이 이름으로 막힌다 */
 	static final String POD_NAME = "lab";
+
+	/**
+	 * Pod 로그를 읽는 크기 상한. 준비 중 로그(dockerd 시작 로그와 단계 기록)는 수십 KB다.
+	 * ponytail: 처음부터 이만큼만 읽는다. dockerd 로그가 늘어 단계 기록이 상한 뒤로 밀리면 그 단계에 머무르므로, 그때는 sinceSeconds로 바꾼다
+	 */
+	static final int LOG_LIMIT_BYTES = 256 * 1024;
 
 	/**
 	 * container가 이 이유로 waiting이면 image를 못 받은 것이다. kubelet이 계속 다시 시도하지만 대부분 저절로 풀리지 않아서
@@ -98,7 +108,7 @@ class KubernetesLabCluster implements LabCluster {
 	@Override
 	public void createNamespace(long sessionId) {
 		String namespace = namespace(sessionId);
-		// 아래 세 요청은 각각 ignoreConflict로 감싼다. 이미 있으면(409) 성공으로 보고 다음 단계로 간다.
+		// 아래 네 요청은 각각 ignoreConflict로 감싼다. 이미 있으면(409) 성공으로 보고 다음 단계로 간다.
 		// 중간에 실패해서 reconciler가 다시 불러도 있는 것은 건너뛰고 없는 것만 만든다(멱등)
 
 		// apiVersion: v1 / kind: Namespace
@@ -127,6 +137,17 @@ class KubernetesLabCluster implements LabCluster {
 			.metadata(new V1ObjectMeta().name("lab"))
 			.spec(new V1ResourceQuotaSpec().hard(Map.of("pods", new Quantity("1"), "requests.cpu", cpu, "limits.cpu", cpu,
 					"requests.memory", memory, "limits.memory", memory, "requests.ephemeral-storage", disk))))
+			.execute());
+
+		// apiVersion: rbac.authorization.k8s.io/v1 / kind: RoleBinding
+		// metadata: { name: lab-log-reader }
+		// roleRef: { kind: ClusterRole, name: hackforge-lab-log-reader }
+		// subjects: [{ kind: ServiceAccount, namespace: hackforge, name: hackforge-backend }]
+		// 백엔드가 이 namespace의 Pod 로그만 읽게 한다(ADR 021). 역할과 대상은 admission policy가 이 값만 허용한다
+		ignoreConflict(() -> rbac().createNamespacedRoleBinding(namespace, new V1RoleBinding()
+			.metadata(new V1ObjectMeta().name("lab-log-reader"))
+			.roleRef(new V1RoleRef().apiGroup("rbac.authorization.k8s.io").kind("ClusterRole").name("hackforge-lab-log-reader"))
+			.addSubjectsItem(new RbacV1Subject().kind("ServiceAccount").namespace("hackforge").name("hackforge-backend")))
 			.execute());
 	}
 
@@ -241,6 +262,19 @@ class KubernetesLabCluster implements LabCluster {
 	}
 
 	@Override
+	public String readPodLog(long sessionId) {
+		try {
+			// kubectl logs lab -n lab-<id> --limit-bytes=<LOG_LIMIT_BYTES>
+			String log = core().readNamespacedPodLog(POD_NAME, namespace(sessionId)).limitBytes(LOG_LIMIT_BYTES).execute();
+			return log == null ? "" : log;
+		}
+		catch (ApiException ex) {
+			// 컨테이너가 시작 전이면 400, 권한이 아직 반영되지 않았으면 403
+			throw new LabClusterException(ex);
+		}
+	}
+
+	@Override
 	public void deletePod(long sessionId) {
 		// 없으면(404) 이미 지워진 것으로 본다
 		ignoreNotFound(() -> core().deleteNamespacedPod(POD_NAME, namespace(sessionId)).execute());
@@ -296,6 +330,10 @@ class KubernetesLabCluster implements LabCluster {
 
 	private NetworkingV1Api networking() {
 		return new NetworkingV1Api(client.get());
+	}
+
+	private RbacAuthorizationV1Api rbac() {
+		return new RbacAuthorizationV1Api(client.get());
 	}
 
 	/**
