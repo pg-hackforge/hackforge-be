@@ -34,6 +34,10 @@ public class ApiClient {
 		return send(req);
 	}
 
+	public ResultActions getWithHeader(String path, String name, String value) throws Exception {
+		return send(MockMvcRequestBuilders.get(path).header(name, value));
+	}
+
 	public ResultActions post(String path, String json) throws Exception {
 		if (!cookies.containsKey("XSRF-TOKEN")) {
 			get("/api/me");

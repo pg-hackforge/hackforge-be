@@ -102,9 +102,16 @@ public class LabSession {
 		this.lastActivityAt = now;
 	}
 
-	/** {@code READY}일 때만 값이 있다. 이 시각이 지나도록 활동이 없으면 idle 종료한다 */
-	public Instant idleDeadline(Duration idleTimeout) {
-		return status == LabStatus.READY ? lastActivityAt.plus(idleTimeout) : null;
+	/**
+	 * {@code READY}일 때만 값이 있다. 이 시각이 지나도록 활동이 없으면 idle 종료한다.
+	 * @param recent 아직 DB에 쓰지 않은 활동 시각(ActivityTracker). 없으면 null. DB 값과 둘 중 최근 값으로 센다
+	 */
+	public Instant idleDeadline(Duration idleTimeout, Instant recent) {
+		if (status != LabStatus.READY) {
+			return null;
+		}
+		Instant last = recent != null && recent.isAfter(lastActivityAt) ? recent : lastActivityAt;
+		return last.plus(idleTimeout);
 	}
 
 	/** 생성 실패 후 다시 만든다. 지금까지 재시도한 횟수를 {@code startAttempts}에 센다 */

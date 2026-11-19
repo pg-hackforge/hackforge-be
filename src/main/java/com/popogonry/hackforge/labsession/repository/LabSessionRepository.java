@@ -43,6 +43,17 @@ public interface LabSessionRepository extends JpaRepository<LabSession, Long> {
 			""")
 	int terminate(long id, long userId, Collection<LabStatus> from, LabStatus terminating, LabEndReason reason, Instant now);
 
+	/**
+	 * {@link com.popogonry.hackforge.labsession.service.ActivityTracker}가 모은 활동 시각을 쓴다. {@code READY}이고 지금 값보다 최근일
+	 * 때만 바꾼다. version을 올리는 이유는 {@link #terminate}와 같다. 바뀐 행 수를 반환한다
+	 */
+	@Modifying
+	@Query("""
+			update LabSession s set s.lastActivityAt = :at, s.version = s.version + 1
+			where s.id = :id and s.status = :ready and s.lastActivityAt < :at
+			""")
+	int writeActivity(long id, Instant at, LabStatus ready);
+
 	/** {@code READY}일 때만 마지막 활동 시각을 바꾼다. version을 올리는 이유는 {@link #terminate}와 같다. 바뀐 행 수를 반환한다 */
 	@Modifying
 	@Query("""

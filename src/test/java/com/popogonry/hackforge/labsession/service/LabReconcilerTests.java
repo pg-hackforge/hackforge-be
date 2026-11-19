@@ -53,6 +53,9 @@ class LabReconcilerTests {
 	@Autowired
 	JdbcTemplate jdbcTemplate;
 
+	@Autowired
+	ActivityTracker activityTracker;
+
 	FakeLabCluster cluster;
 
 	MutableClock now;
@@ -319,6 +322,67 @@ class LabReconcilerTests {
 		labReconciler.reconcileAll();
 
 		assertThat(statusOf(id)).isEqualTo("READY");
+	}
+
+	long versionOf(long id) {
+		return ((Number) row(id).get("version")).longValue();
+	}
+
+	Instant lastActivityOf(long id) {
+		return ((Timestamp) row(id).get("last_activity_at")).toInstant();
+	}
+
+	/** ADR 012. 메모리에만 있는 활동(터미널 입력, 공격 대상 요청)도 idle 판단에 쓴다 */
+	@Test
+	void activityInMemoryKeepsSessionAlive() {
+		long id = readySession();
+		now.advance(Duration.ofMinutes(25));
+		activityTracker.record(id);
+
+		now.advance(Duration.ofMinutes(10));
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("READY");
+
+		now.advance(Duration.ofMinutes(21));
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("TERMINATING");
+		assertThat(row(id).get("end_reason")).isEqualTo("IDLE");
+	}
+
+	/** 활동은 모았다가 flush 때 한 번만 쓴다. 새 활동이 없으면 쓰지 않는다 */
+	@Test
+	void flushWritesLatestActivityOnce() {
+		long id = readySession();
+		Instant readyAt = lastActivityOf(id);
+		long version = versionOf(id);
+		now.advance(Duration.ofSeconds(10));
+		activityTracker.record(id);
+		now.advance(Duration.ofSeconds(10));
+		activityTracker.record(id);
+		assertThat(lastActivityOf(id)).isEqualTo(readyAt);
+
+		activityTracker.flush();
+		assertThat(lastActivityOf(id)).isEqualTo(readyAt.plusSeconds(20));
+		assertThat(versionOf(id)).isEqualTo(version + 1);
+
+		activityTracker.flush();
+		assertThat(versionOf(id)).isEqualTo(version + 1);
+		assertThat(activityTracker.latest(id)).isEmpty();
+	}
+
+	/** 종료 중인 세션의 활동은 쓰지 않는다 */
+	@Test
+	void flushIgnoresSessionThatIsNotReady() {
+		long id = readySession();
+		Instant readyAt = lastActivityOf(id);
+		now.advance(Duration.ofSeconds(10));
+		activityTracker.record(id);
+		changeFromOutside(id, "TERMINATING", "USER");
+
+		activityTracker.flush();
+
+		assertThat(lastActivityOf(id)).isEqualTo(readyAt);
+		assertThat(activityTracker.latest(id)).isEmpty();
 	}
 
 	/** idle 시간은 READY부터 센다. 생성에 걸린 시간은 들어가지 않는다 */

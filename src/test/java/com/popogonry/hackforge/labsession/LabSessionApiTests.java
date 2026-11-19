@@ -29,11 +29,12 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.popogonry.hackforge.TestcontainersConfiguration;
 import com.popogonry.hackforge.challenge.TestChallenges;
+import com.popogonry.hackforge.labsession.service.ActivityTracker;
 import com.popogonry.hackforge.user.ApiClient;
 
 /** 실습 시작, 종료, 활동 기록과 세션 조회(ADR 012). 정원은 hackforge.lab.max-concurrent=2, idle은 30m, 경고는 5m(application.properties) */
 @Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@SpringBootTest(properties = "hackforge.lab.target-port=18081")
 @AutoConfigureMockMvc
 class LabSessionApiTests {
 
@@ -47,6 +48,9 @@ class LabSessionApiTests {
 
 	@Autowired
 	PasswordEncoder passwordEncoder;
+
+	@Autowired
+	ActivityTracker activityTracker;
 
 	long challengeId;
 
@@ -406,6 +410,33 @@ class LabSessionApiTests {
 		kim.get("/api/labs/" + id)
 			.andExpect(jsonPath("$.idleDeadline").value(nullValue()))
 			.andExpect(jsonPath("$.idleWarningAt").value(nullValue()));
+	}
+
+	/** ADR 022. 공격 대상 주소는 플랫폼에 들어온 호스트에 공격 대상 포트를 붙인다. READY에서만 준다 */
+	@Test
+	void readySessionHasTargetUrlOnTheRequestHost() throws Exception {
+		ApiClient kim = approved("kim");
+		long id = readySession(kim);
+
+		kim.get("/api/labs/" + id).andExpect(jsonPath("$.targetUrl").value("http://localhost:18081/"));
+		kim.getWithHeader("/api/labs/" + id, "Host", "10.0.0.5:5173")
+			.andExpect(jsonPath("$.targetUrl").value("http://10.0.0.5:18081/"));
+
+		jdbcTemplate.update("update lab_sessions set status = 'TERMINATING', end_reason = 'USER'");
+		kim.get("/api/labs/" + id).andExpect(jsonPath("$.targetUrl").value(nullValue()));
+	}
+
+	/** 메모리에 모인 활동(ActivityTracker)도 idle 기한에 반영한다 */
+	@Test
+	void idleDeadlineIncludesActivityInMemory() throws Exception {
+		ApiClient kim = approved("kim");
+		long id = readySession(kim);
+		Instant last = lastActivityAt();
+		Instant later = last.plus(Duration.ofMinutes(3));
+		activityTracker.record(id, later);
+
+		kim.get("/api/labs/" + id)
+			.andExpect(jsonPath("$.idleDeadline").value(later.plus(Duration.ofMinutes(30)).toString()));
 	}
 
 	/** [계속하기]는 마지막 활동을 지금으로 바꾸고 늘어난 기한을 응답한다. version을 올려서 그 전에 읽은 reconciler의 idle 종료가 실패한다 */

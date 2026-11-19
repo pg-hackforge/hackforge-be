@@ -16,6 +16,7 @@ public record LabSessionResponse(
 		LabStatus status,
 		LabPrepStep prepStep,
 		boolean retrying,
+		String targetUrl,
 		LabEndReason endReason,
 		Instant createdAt,
 		Instant readyAt,
@@ -24,12 +25,17 @@ public record LabSessionResponse(
 		Instant idleWarningAt
 ) {
 
-	/** idle 기한과 경고 시각은 {@code READY}일 때만 준다(ADR 012) */
-	public static LabSessionResponse from(LabSession session, LabProperties labProperties) {
-		Instant idleDeadline = session.idleDeadline(labProperties.idleTimeout());
+	/**
+	 * idle 기한과 경고 시각은 {@code READY}일 때만 준다(ADR 012).
+	 * @param recentActivity 아직 DB에 쓰지 않은 활동 시각. 없으면 null
+	 * @param targetUrl 공격 대상 주소. {@code READY}가 아니면 null(ADR 022)
+	 */
+	public static LabSessionResponse from(LabSession session, LabProperties labProperties, Instant recentActivity,
+			String targetUrl) {
+		Instant idleDeadline = session.idleDeadline(labProperties.idleTimeout(), recentActivity);
 		Instant idleWarningAt = idleDeadline == null ? null : idleDeadline.minus(labProperties.idleWarning());
 		return new LabSessionResponse(session.getId(), session.getChallenge().getId(),
-				session.getChallenge().getTitle(), session.getStatus(), session.getPrepStep(), session.isRetrying(),
+				session.getChallenge().getTitle(), session.getStatus(), session.getPrepStep(), session.isRetrying(), targetUrl,
 				session.getEndReason(),
 				session.getCreatedAt(), session.getReadyAt(), session.getEndedAt(), idleDeadline, idleWarningAt);
 	}

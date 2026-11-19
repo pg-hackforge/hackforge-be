@@ -26,6 +26,10 @@ public class FakeLabCluster implements LabCluster {
 
 	private final Map<Long, RuntimeException> logFailures = new HashMap<>();
 
+	private final Map<Long, Integer> targetPorts = new java.util.concurrent.ConcurrentHashMap<>();
+
+	private final Set<Long> closedTargets = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
 	private Runnable onCreatePod = () -> {
 	};
 
@@ -64,6 +68,21 @@ public class FakeLabCluster implements LabCluster {
 			throw failure;
 		}
 		return logs.getOrDefault(sessionId, "");
+	}
+
+	/** {@link #setTargetPort}로 정한 포트. 정하지 않았으면 연결 실패 */
+	@Override
+	public int targetPort(long sessionId) {
+		Integer port = targetPorts.get(sessionId);
+		if (port == null) {
+			throw new LabClusterException(new ApiException(500, "port-forward 실패"));
+		}
+		return port;
+	}
+
+	@Override
+	public void closeTarget(long sessionId) {
+		closedTargets.add(sessionId);
 	}
 
 	@Override
@@ -109,6 +128,15 @@ public class FakeLabCluster implements LabCluster {
 	}
 
 	/** 마지막으로 만든 Pod의 image. 한 번도 만들지 않았으면 null */
+	/** 공격 대상 연결이 이 포트(테스트의 가짜 공격 대상 앱)로 이어진다 */
+	public void setTargetPort(long sessionId, int port) {
+		targetPorts.put(sessionId, port);
+	}
+
+	public boolean targetClosed(long sessionId) {
+		return closedTargets.contains(sessionId);
+	}
+
 	public String podImage(long sessionId) {
 		return images.get(sessionId);
 	}
@@ -136,6 +164,8 @@ public class FakeLabCluster implements LabCluster {
 		failures.clear();
 		logs.clear();
 		logFailures.clear();
+		targetPorts.clear();
+		closedTargets.clear();
 		onCreatePod = () -> {
 		};
 	}

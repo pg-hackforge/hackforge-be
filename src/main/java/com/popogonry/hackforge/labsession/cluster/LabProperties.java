@@ -13,8 +13,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param startTimeout {@code CREATING}, {@code INITIALIZING}에 머물 수 있는 시간. 넘으면 생성 실패로 본다
  * @param idleTimeout {@code READY}에서 마지막 활동 뒤 이 시간이 지나면 종료한다({@code IDLE})
  * @param idleWarning idle 종료 몇 분 전부터 경고할지. 응답의 {@code idleWarningAt}
+ * @param targetPort 공격 대상 포트(ADR 022). 0이면 열지 않는다
+ * @param webPort 공격 대상 응답의 {@code frame-ancestors}에 넣는 플랫폼 화면 포트
+ * @param targetTimeout 공격 대상 응답을 기다리는 시간
+ * @param activityFlushInterval 메모리에 모은 활동 시각을 DB에 쓰는 간격
  */
 @ConfigurationProperties("hackforge.lab")
 public record LabProperties(String kubeconfig, String cpu, String memory, String disk, int maxConcurrent,
-		Duration startTimeout, Duration idleTimeout, Duration idleWarning) {
+		Duration startTimeout, Duration idleTimeout, Duration idleWarning, int targetPort, int webPort,
+		Duration targetTimeout, Duration activityFlushInterval) {
 }

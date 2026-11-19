@@ -1,5 +1,6 @@
 package com.popogonry.hackforge.labsession.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
@@ -15,8 +16,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.popogonry.hackforge.labsession.cluster.LabProperties;
 import com.popogonry.hackforge.labsession.domain.LabSession;
+import com.popogonry.hackforge.labsession.domain.LabStatus;
 import com.popogonry.hackforge.labsession.dto.LabSessionResponse;
 import com.popogonry.hackforge.labsession.dto.StartLabRequest;
+import com.popogonry.hackforge.labsession.service.ActivityTracker;
 import com.popogonry.hackforge.labsession.service.LabSessionService;
 
 import lombok.RequiredArgsConstructor;
@@ -28,6 +31,11 @@ class LabSessionController {
 	private final LabSessionService labSessionService;
 
 	private final LabProperties labProperties;
+
+	private final ActivityTracker activityTracker;
+
+	/** 요청마다 다른 객체가 주입되는 request scope proxy. 공격 대상 주소의 호스트를 읽는다 */
+	private final HttpServletRequest request;
 
 	/** 세션 행만 만들고 응답한다. 환경은 reconciler가 비동기로 만든다(ADR 012) */
 	@PostMapping("/api/labs")
@@ -62,7 +70,19 @@ class LabSessionController {
 	}
 
 	private LabSessionResponse response(LabSession session) {
-		return LabSessionResponse.from(session, labProperties);
+		return LabSessionResponse.from(session, labProperties, activityTracker.latest(session.getId()).orElse(null),
+				targetUrl(session));
+	}
+
+	/**
+	 * 학습자가 플랫폼에 들어온 호스트에 공격 대상 포트를 붙인다(ADR 022). 같은 호스트여야 SESSION cookie가 공격 대상 포트로도 간다.
+	 * reverse proxy 뒤라면 {@code server.forward-headers-strategy}를 켜야 {@code X-Forwarded-Host}가 반영된다
+	 */
+	private String targetUrl(LabSession session) {
+		if (session.getStatus() != LabStatus.READY || labProperties.targetPort() <= 0) {
+			return null;
+		}
+		return request.getScheme() + "://" + request.getServerName() + ":" + labProperties.targetPort() + "/";
 	}
 
 	private static long userId(Authentication authentication) {
