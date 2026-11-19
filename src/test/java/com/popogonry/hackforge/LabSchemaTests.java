@@ -16,7 +16,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.popogonry.hackforge.challenge.TestChallenges;
 
-/** challenges, challenge_hints, lab_sessions 테이블 제약(ADR 012, ADR 014)과 개발 전용 seed. */
+/** challenges, challenge_categories, challenge_hints, lab_sessions 테이블 제약(ADR 012, ADR 014, ADR 020)과 개발 전용 seed. */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class LabSchemaTests {
@@ -139,6 +139,49 @@ class LabSchemaTests {
 	@Test
 	void maxDefenseAttemptsMustBePositive() {
 		assertThatThrownBy(() -> jdbcTemplate.update("update challenges set max_defense_attempts = 0"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	/** 처음 분류 12개가 표시 순서대로 들어 있다(ADR 020) */
+	@Test
+	void categoriesAreSeededInDisplayOrder() {
+		var keys = jdbcTemplate.queryForList("select key from challenge_categories order by display_order", String.class);
+
+		assertThat(keys).containsExactly("sqli", "xss", "access-control", "auth-session", "command-injection",
+				"path-traversal", "file-upload", "ssrf", "csrf", "xxe", "deserialization", "info-disclosure");
+	}
+
+	@Test
+	void unknownCategoryIsRejected() {
+		assertThatThrownBy(() -> jdbcTemplate.update("update challenges set category_key = 'sqlinjection'"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	void categoryWithChallengesCannotBeDeleted() {
+		assertThatThrownBy(() -> jdbcTemplate.update("delete from challenge_categories where key = 'sqli'"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	void unknownDifficultyIsRejected() {
+		assertThatThrownBy(() -> jdbcTemplate.update("update challenges set difficulty = 'EASY'"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	void estimatedMinutesMustBePositive() {
+		assertThatThrownBy(() -> jdbcTemplate.update("update challenges set estimated_minutes = 0"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	void summaryIsOneToEightyCharacters() {
+		jdbcTemplate.update("update challenges set summary = ?", "가".repeat(80));
+
+		assertThatThrownBy(() -> jdbcTemplate.update("update challenges set summary = ?", "가".repeat(81)))
+			.isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> jdbcTemplate.update("update challenges set summary = ''"))
 			.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
