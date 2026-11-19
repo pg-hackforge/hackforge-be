@@ -262,4 +262,61 @@ class ChallengeApiTests {
 		new ApiClient(mockMvc).get("/api/challenges").andExpect(status().isUnauthorized());
 	}
 
+	/** 목록 항목에 설명 전문을 더한다. 힌트, 해답, 검증 스크립트는 없다 */
+	@Test
+	void detailHasListFieldsAndDescriptionWithoutHintsOrScripts() throws Exception {
+		long id = TestChallenges.insertListed(jdbcTemplate, "sqli-login", "로그인 우회", "관리자로 로그인하기", "sqli",
+				"BEGINNER", 30, days(20));
+		jdbcTemplate.update("insert into challenge_hints (challenge_id, stage, position, content) values (?, 'ATTACK', 1, 'h')",
+				id);
+
+		login("APPROVED").get("/api/challenges/" + id)
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.id").value(id))
+			.andExpect(jsonPath("$.slug").value("sqli-login"))
+			.andExpect(jsonPath("$.title").value("로그인 우회"))
+			.andExpect(jsonPath("$.summary").value("관리자로 로그인하기"))
+			.andExpect(jsonPath("$.category.key").value("sqli"))
+			.andExpect(jsonPath("$.category.name").value("SQL Injection"))
+			.andExpect(jsonPath("$.difficulty").value("BEGINNER"))
+			.andExpect(jsonPath("$.estimatedMinutes").value(30))
+			.andExpect(jsonPath("$.isNew").value(false))
+			.andExpect(jsonPath("$.description").value("로그인 우회 설명"))
+			.andExpect(jsonPath("$.image").doesNotExist())
+			.andExpect(jsonPath("$.hints").doesNotExist())
+			.andExpect(jsonPath("$.solution").doesNotExist())
+			.andExpect(jsonPath("$.attackCheck").doesNotExist())
+			.andExpect(jsonPath("$.exploit").doesNotExist())
+			.andExpect(jsonPath("$.functionalTest").doesNotExist());
+	}
+
+	@Test
+	void unknownChallengeIsNotFound() throws Exception {
+		login("APPROVED").get("/api/challenges/999999")
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("CHALLENGE_NOT_FOUND"));
+	}
+
+	@Test
+	void nonNumericChallengeIdIsRejected() throws Exception {
+		login("APPROVED").get("/api/challenges/abc")
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+			.andExpect(jsonPath("$.errors[0].field").value("id"));
+	}
+
+	@Test
+	void pendingAccountCanReadDetail() throws Exception {
+		long id = TestChallenges.insert(jdbcTemplate, "test-web", "테스트 문제", "x:1");
+
+		login("PENDING").get("/api/challenges/" + id).andExpect(status().isOk());
+	}
+
+	@Test
+	void anonymousCannotReadDetail() throws Exception {
+		long id = TestChallenges.insert(jdbcTemplate, "test-web", "테스트 문제", "x:1");
+
+		new ApiClient(mockMvc).get("/api/challenges/" + id).andExpect(status().isUnauthorized());
+	}
+
 }

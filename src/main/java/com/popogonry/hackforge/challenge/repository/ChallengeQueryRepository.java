@@ -1,9 +1,12 @@
 package com.popogonry.hackforge.challenge.repository;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -13,6 +16,7 @@ import com.popogonry.hackforge.challenge.domain.ChallengeDifficulty;
 import com.popogonry.hackforge.challenge.domain.ChallengeSort;
 import com.popogonry.hackforge.challenge.dto.CategoryCountResponse;
 import com.popogonry.hackforge.challenge.dto.ChallengeCategoryResponse;
+import com.popogonry.hackforge.challenge.dto.ChallengeDetailResponse;
 import com.popogonry.hackforge.challenge.dto.ChallengeResponse;
 
 import lombok.RequiredArgsConstructor;
@@ -51,12 +55,23 @@ public class ChallengeQueryRepository {
 		MapSqlParameterSource params = new MapSqlParameterSource().addValue("limit", limit).addValue("offset", offset);
 		String sql = COLUMNS + FROM + " where " + conditions(filter, true, true, params) + " order by " + order(sort)
 				+ " limit :limit offset :offset";
-		return namedParameterJdbcTemplate.query(sql, params,
-				(rs, row) -> new ChallengeResponse(rs.getLong("id"), rs.getString("slug"), rs.getString("title"),
-						rs.getString("summary"),
-						new ChallengeCategoryResponse(rs.getString("category_key"), rs.getString("category_name")),
-						ChallengeDifficulty.valueOf(rs.getString("difficulty")), rs.getInt("estimated_minutes"),
-						rs.getBoolean("is_new")));
+		return namedParameterJdbcTemplate.query(sql, params, (rs, row) -> item(rs));
+	}
+
+	public Optional<ChallengeDetailResponse> findDetail(long id) {
+		String sql = COLUMNS + ", c.description" + FROM + " where c.id = :id";
+		return namedParameterJdbcTemplate
+			.query(sql, Map.of("id", id), (rs, row) -> ChallengeDetailResponse.of(item(rs), rs.getString("description")))
+			.stream()
+			.findFirst();
+	}
+
+	private static ChallengeResponse item(ResultSet rs) throws SQLException {
+		return new ChallengeResponse(rs.getLong("id"), rs.getString("slug"), rs.getString("title"),
+				rs.getString("summary"),
+				new ChallengeCategoryResponse(rs.getString("category_key"), rs.getString("category_name")),
+				ChallengeDifficulty.valueOf(rs.getString("difficulty")), rs.getInt("estimated_minutes"),
+				rs.getBoolean("is_new"));
 	}
 
 	public long count(Filter filter) {

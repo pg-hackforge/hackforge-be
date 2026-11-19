@@ -6,11 +6,13 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.popogonry.hackforge.challenge.domain.ChallengeDifficulty;
 import com.popogonry.hackforge.challenge.domain.ChallengeSort;
+import com.popogonry.hackforge.challenge.dto.ChallengeDetailResponse;
 import com.popogonry.hackforge.challenge.dto.ChallengePageResponse;
 import com.popogonry.hackforge.challenge.repository.ChallengeQueryRepository.Filter;
 import com.popogonry.hackforge.challenge.service.ChallengeService;
@@ -31,6 +33,11 @@ class ChallengeController {
 			@RequestParam(defaultValue = "NEWEST") ChallengeSort sort,
 			@RequestParam(defaultValue = "1") @Min(1) int page) {
 		return challengeService.list(new Filter(q, categories, difficulties), sort, page);
+	}
+
+	@GetMapping("/api/challenges/{id}")
+	ChallengeDetailResponse get(@PathVariable long id) {
+		return challengeService.get(id);
 	}
 
 }
