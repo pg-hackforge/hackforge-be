@@ -25,6 +25,15 @@ public class ApiClient {
 		return send(MockMvcRequestBuilders.get(path));
 	}
 
+	/** 쿼리 값은 이름, 값 순서로. 같은 이름을 여러 번 넣을 수 있고 값은 인코딩된다 */
+	public ResultActions get(String path, String... params) throws Exception {
+		MockHttpServletRequestBuilder req = MockMvcRequestBuilders.get(path);
+		for (int i = 0; i < params.length; i += 2) {
+			req.param(params[i], params[i + 1]);
+		}
+		return send(req);
+	}
+
 	public ResultActions post(String path, String json) throws Exception {
 		if (!cookies.containsKey("XSRF-TOKEN")) {
 			get("/api/me");
