@@ -2,13 +2,15 @@
 -- 이미지는 hackforge-docs infra/lab-test-challenge에서 빌드해 개발 VM에 import한다(#6 작업 5)
 -- 클러스터 확인용 문제라 검증 스크립트와 힌트는 자리 채움 값이다. 실제 문제는 Challenge 저장소의 register.sh로 넣는다(ADR 014)
 INSERT INTO challenges (slug, title, image, description, solution, attack_check, exploit, functional_test,
-                        max_defense_attempts, updated_at)
+                        max_defense_attempts, category_key, difficulty, estimated_minutes, summary, updated_at)
 VALUES ('test-web', '테스트 문제 (nginx + PostgreSQL)', 'hackforge/lab-test-challenge:0.1.0',
-        '실습 환경 확인용 테스트 문제. 공격할 취약점이 없다', '없음', 'exit 1', 'exit 1', 'exit 0', 1, now())
+        '실습 환경 확인용 테스트 문제. 공격할 취약점이 없다', '없음', 'exit 1', 'exit 1', 'exit 0', 1,
+        'info-disclosure', 'INTRO', 10, '실습 환경 확인용 테스트 문제', now())
 ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, image = EXCLUDED.image, description = EXCLUDED.description,
     solution = EXCLUDED.solution, attack_check = EXCLUDED.attack_check, exploit = EXCLUDED.exploit,
     functional_test = EXCLUDED.functional_test, max_defense_attempts = EXCLUDED.max_defense_attempts,
-    updated_at = EXCLUDED.updated_at;
+    category_key = EXCLUDED.category_key, difficulty = EXCLUDED.difficulty,
+    estimated_minutes = EXCLUDED.estimated_minutes, summary = EXCLUDED.summary, updated_at = EXCLUDED.updated_at;
 
 DELETE FROM challenge_hints WHERE challenge_id = (SELECT id FROM challenges WHERE slug = 'test-web');
 INSERT INTO challenge_hints (challenge_id, stage, position, content)
