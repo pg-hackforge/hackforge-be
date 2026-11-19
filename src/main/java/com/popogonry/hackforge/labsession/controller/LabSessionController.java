@@ -32,33 +32,33 @@ class LabSessionController {
 	/** 세션 행만 만들고 응답한다. 환경은 reconciler가 비동기로 만든다(ADR 012) */
 	@PostMapping("/api/labs")
 	@ResponseStatus(HttpStatus.ACCEPTED)
-	LabSessionResponse start(@Valid @RequestBody StartLabRequest body, Authentication authentication) {
-		return response(labSessionService.start(userId(authentication), body.challengeId()));
+	LabSessionResponse startLab(@Valid @RequestBody StartLabRequest body, Authentication authentication) {
+		return response(labSessionService.startLab(userId(authentication), body.challengeId()));
 	}
 
 	@GetMapping("/api/labs/current")
-	ResponseEntity<LabSessionResponse> current(Authentication authentication) {
-		return labSessionService.findCurrent(userId(authentication))
+	ResponseEntity<LabSessionResponse> getCurrentLab(Authentication authentication) {
+		return labSessionService.findCurrentLab(userId(authentication))
 			.map(session -> ResponseEntity.ok(response(session)))
 			.orElseGet(() -> ResponseEntity.noContent().build());
 	}
 
 	@GetMapping("/api/labs/{id}")
-	LabSessionResponse get(@PathVariable long id, Authentication authentication) {
-		return response(labSessionService.get(id, userId(authentication)));
+	LabSessionResponse getLab(@PathVariable long id, Authentication authentication) {
+		return response(labSessionService.getLab(id, userId(authentication)));
 	}
 
 	/** {@code TERMINATING}으로 바꾸고 응답한다. 환경은 reconciler가 비동기로 지운다 */
 	@DeleteMapping("/api/labs/{id}")
 	@ResponseStatus(HttpStatus.ACCEPTED)
-	LabSessionResponse end(@PathVariable long id, Authentication authentication) {
-		return response(labSessionService.end(id, userId(authentication)));
+	LabSessionResponse endLab(@PathVariable long id, Authentication authentication) {
+		return response(labSessionService.endLab(id, userId(authentication)));
 	}
 
 	/** [계속하기]. 상태 조회(GET)는 활동으로 세지 않는다(ADR 012) */
 	@PostMapping("/api/labs/{id}/activity")
-	LabSessionResponse recordActivity(@PathVariable long id, Authentication authentication) {
-		return response(labSessionService.recordActivity(id, userId(authentication)));
+	LabSessionResponse recordLabActivity(@PathVariable long id, Authentication authentication) {
+		return response(labSessionService.recordLabActivity(id, userId(authentication)));
 	}
 
 	private LabSessionResponse response(LabSession session) {

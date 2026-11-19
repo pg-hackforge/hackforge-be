@@ -84,14 +84,14 @@ public class UserService {
 		}
 		if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
 			if (recordFailure(userId, now)) {
-				userSessionService.deleteAll(userId);
+				userSessionService.deleteAllSessions(userId);
 				throw locked(LOCK_DURATION);
 			}
 			throw new ApiException(ErrorCode.CURRENT_PASSWORD_MISMATCH);
 		}
 		user.changePassword(passwordEncoder.encode(newPassword));
 		userRepository.resetFailedLoginCount(userId);
-		userSessionService.deleteAllExcept(userId, currentSessionId);
+		userSessionService.deleteAllSessionsExcept(userId, currentSessionId);
 	}
 
 	/** 실패 횟수를 1 올리고, 이번 실패로 잠겼으면 true. 로그인과 비밀번호 변경이 같은 횟수를 쓴다. */

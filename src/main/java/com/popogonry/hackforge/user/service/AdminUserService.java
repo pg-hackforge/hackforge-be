@@ -28,17 +28,17 @@ public class AdminUserService {
 
 	private final PasswordEncoder passwordEncoder;
 
-	public List<User> list(UserStatus status) {
+	public List<User> listUsers(UserStatus status) {
 		return userRepository.findByStatusOrderByCreatedAtAscIdAsc(status);
 	}
 
 	@Transactional
-	public User approve(long id) {
+	public User approveUser(long id) {
 		return changeStatus(id, UserStatus.APPROVED, Set.of(UserStatus.PENDING, UserStatus.REJECTED));
 	}
 
 	@Transactional
-	public User reject(long id) {
+	public User rejectUser(long id) {
 		return changeStatus(id, UserStatus.REJECTED, Set.of(UserStatus.PENDING));
 	}
 
@@ -47,13 +47,13 @@ public class AdminUserService {
 	 * 자기 역할은 바꿀 수 없다. 마지막 관리자가 자기를 내려 관리자가 0명이 되는 것을 막는다.
 	 */
 	@Transactional
-	public User changeRole(long adminId, long targetId, UserRole role) {
+	public User changeUserRole(long adminId, long targetId, UserRole role) {
 		if (adminId == targetId) {
 			throw new ApiException(ErrorCode.CANNOT_CHANGE_OWN_ROLE);
 		}
 		User user = getById(targetId);
 		user.changeRole(role);
-		userSessionService.deleteAll(targetId);
+		userSessionService.deleteAllSessions(targetId);
 		return user;
 	}
 
@@ -68,7 +68,7 @@ public class AdminUserService {
 		user.changePassword(passwordEncoder.encode(temporaryPassword));
 		// 비밀번호를 잊은 사용자는 여러 번 틀려 잠겨 있는 경우가 많다
 		user.unlock();
-		userSessionService.deleteAll(targetId);
+		userSessionService.deleteAllSessions(targetId);
 		return temporaryPassword;
 	}
 
