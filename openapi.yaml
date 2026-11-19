@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.2.1
+  version: 0.3.0
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -339,21 +339,93 @@ paths:
     get:
       tags: [lab]
       summary: 문제 목록
-      description: 승인 대기·거절 계정도 조회 가능. 승인 여부는 실습 시작 시점에만 확인한다. id 순서로 반환한다
+      description: >-
+        검색, 필터, 정렬, 페이지(20개). 같은 조건의 여러 값은 "또는", 다른 조건끼리는 "그리고"로 묶는다.
+        범위를 넘은 페이지는 빈 `items`를 반환하고 개수 값은 그대로다.
+        승인 대기·거절 계정도 조회 가능. 승인 여부는 실습 시작 시점에만 확인한다
       operationId: listChallenges
       security:
         - sessionCookie: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: 제목, 요약, 분류 이름에서 대소문자 구분 없이 찾는다. `%`, `_`도 글자로 찾는다
+          schema:
+            type: string
+            maxLength: 100
+        - name: category
+          in: query
+          required: false
+          description: 분류 키. 여러 번 넣을 수 있다. 없는 키는 오류가 아니라 일치하는 문제가 없는 것으로 본다
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+        - name: difficulty
+          in: query
+          required: false
+          description: 여러 번 넣을 수 있다
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ChallengeDifficulty'
+        - name: sort
+          in: query
+          required: false
+          description: 생략하면 `NEWEST`
+          schema:
+            $ref: '#/components/schemas/ChallengeSort'
+        - name: page
+          in: query
+          required: false
+          description: 1부터. 생략하면 1
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
       responses:
         '200':
-          description: 문제 목록
+          description: 문제 목록 한 페이지
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ChallengeResponse'
+                $ref: '#/components/schemas/ChallengePageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+  /api/challenges/{id}:
+    get:
+      tags: [lab]
+      summary: 문제 조회
+      description: 목록 항목에 설명 전문(Markdown)을 더해 반환한다. 승인 대기·거절 계정도 조회 가능
+      operationId: getChallenge
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/ChallengeId'
+      responses:
+        '200':
+          description: 문제
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChallengeDetailResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          description: 없는 문제(`CHALLENGE_NOT_FOUND`)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/labs:
     post:
       tags: [lab]
@@ -512,6 +584,13 @@ components:
       description: '`XSRF-TOKEN` 쿠키 값을 그대로 넣는다'
   parameters:
     UserId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    ChallengeId:
       name: id
       in: path
       required: true
@@ -688,10 +767,29 @@ components:
       properties:
         temporaryPassword:
           type: string
+    ChallengeDifficulty:
+      type: string
+      description: '`INTRO` 입문, `BEGINNER` 초급, `INTERMEDIATE` 중급, `ADVANCED` 고급. 이 순서로 쉽다'
+      enum: [INTRO, BEGINNER, INTERMEDIATE, ADVANCED]
+    ChallengeSort:
+      type: string
+      description: '`NEWEST` 새로 추가된 순, `DIFFICULTY` 난이도 낮은 순, `TIME` 예상 시간 짧은 순. 값이 같으면 새로 추가된 순'
+      enum: [NEWEST, DIFFICULTY, TIME]
+    ChallengeCategoryResponse:
+      type: object
+      description: 분류. 목록과 표시 순서는 서버가 정한다
+      required: [key, name]
+      properties:
+        key:
+          type: string
+          description: '예: `sqli`'
+        name:
+          type: string
+          description: '예: `SQL Injection`'
     ChallengeResponse:
       type: object
-      description: 힌트, 해답, 검증 스크립트는 넣지 않는다
-      required: [id, slug, title, description]
+      description: 문제 목록 항목. 설명 전문, 힌트, 해답, 검증 스크립트는 넣지 않는다
+      required: [id, slug, title, summary, category, difficulty, estimatedMinutes, isNew]
       properties:
         id:
           type: integer
@@ -701,9 +799,93 @@ components:
           description: '사람이 읽을 수 있는 문제 식별자(예: `sqli-login`)'
         title:
           type: string
-        description:
+        summary:
           type: string
-          description: 문제 목록에 보이는 설명(Markdown). Challenge 저장소의 `meta/description.md`
+          maxLength: 80
+          description: 목록에 보이는 한 줄 요약
+        category:
+          $ref: '#/components/schemas/ChallengeCategoryResponse'
+        difficulty:
+          $ref: '#/components/schemas/ChallengeDifficulty'
+        estimatedMinutes:
+          type: integer
+          format: int32
+          minimum: 1
+        isNew:
+          type: boolean
+          description: 처음 등록한 지 14일 안이면 true
+    ChallengeDetailResponse:
+      description: 문제 하나. 힌트, 해답, 검증 스크립트는 넣지 않는다
+      allOf:
+        - $ref: '#/components/schemas/ChallengeResponse'
+        - type: object
+          required: [description]
+          properties:
+            description:
+              type: string
+              description: 문제 설명(Markdown). Challenge 저장소의 `meta/description.md`
+    ChallengePageResponse:
+      type: object
+      required: [items, page, size, totalItems, totalPages, facets]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChallengeResponse'
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+          description: 한 페이지 크기(20)
+        totalItems:
+          type: integer
+          format: int64
+          description: 조건에 맞는 문제 수
+        totalPages:
+          type: integer
+          format: int32
+        facets:
+          $ref: '#/components/schemas/ChallengeFacetsResponse'
+    ChallengeFacetsResponse:
+      type: object
+      description: >-
+        필터별 문제 수. 개수가 0인 항목도 넣는다.
+        한 조건의 개수는 그 조건을 뺀 나머지 조건(검색어 포함)을 적용해 센다.
+        예를 들어 난이도 `INTRO`를 골랐어도 분류별 개수는 입문 문제만, 난이도별 개수는 난이도 조건 없이 센다
+      required: [categories, difficulties]
+      properties:
+        categories:
+          type: array
+          description: 분류 표시 순서
+          items:
+            $ref: '#/components/schemas/CategoryCountResponse'
+        difficulties:
+          type: array
+          description: 쉬운 순서
+          items:
+            $ref: '#/components/schemas/DifficultyCountResponse'
+    CategoryCountResponse:
+      type: object
+      required: [key, name, count]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        count:
+          type: integer
+          format: int64
+    DifficultyCountResponse:
+      type: object
+      required: [difficulty, count]
+      properties:
+        difficulty:
+          $ref: '#/components/schemas/ChallengeDifficulty'
+        count:
+          type: integer
+          format: int64
     StartLabRequest:
       type: object
       required: [challengeId]
