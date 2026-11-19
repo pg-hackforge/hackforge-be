@@ -35,6 +35,8 @@ Docker Desktop이 켜져 있어야 한다. 테스트는 Testcontainers로, `boot
   - 응답은 `<리소스>Response`(`UserResponse`).
   - 요청·응답은 파일 하나에 하나씩 두고, openapi.yaml schema 이름도 같게.
   - 엔티티에서 응답으로 바꾸는 메서드는 `UserResponse.from(user)`.
+  - 컨트롤러 메서드는 openapi.yaml의 `operationId`와 같게(`listChallenges`, `getChallenge`). 명세와 코드를 1:1로 찾을 수 있게 한다.
+  - 서비스 메서드는 `<동작><대상>`(`getChallenge`, `approveUser`). 동작에 대상이 들어 있으면 생략(`signup`, `login`). 대상을 클래스 이름에만 맡기지 않는다.
 - 트랜잭션은 서비스에 건다. 클래스에 `@Transactional(readOnly = true)`, 쓰는 메서드에 `@Transactional`. 오류 응답(`ApiException`)을 던져도 남겨야 하는 쓰기가 있으면 `noRollbackFor = ApiException.class`(예: 로그인 실패 횟수).
 - 오류는 `throw new ApiException(ErrorCode.X)`. 새 코드는 openapi.yaml `Problem.code` enum에 먼저 추가하고 `ErrorCode`에 상태와 메시지를 둔다(`ErrorCodeTests`가 spec에 있는지 확인). 메시지와 입력 칸 오류 문구(`ValidationMessages.properties`)는 화면에 보이므로 해요체로 쓴다(hackforge-docs ADR 019).
 - 생성자 주입은 Lombok `@RequiredArgsConstructor`, getter는 `@Getter`. record에는 Lombok을 쓰지 않는다.

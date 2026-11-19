@@ -27,17 +27,17 @@ class ChallengeController {
 
 	/** 승인 대기·거절 계정도 볼 수 있다. 승인은 실습을 시작할 때 확인한다 */
 	@GetMapping("/api/challenges")
-	ChallengePageResponse list(@RequestParam(required = false) @Size(max = 100) String q,
+	ChallengePageResponse listChallenges(@RequestParam(required = false) @Size(max = 100) String q,
 			@RequestParam(name = "category", required = false) List<String> categories,
 			@RequestParam(name = "difficulty", required = false) List<ChallengeDifficulty> difficulties,
 			@RequestParam(defaultValue = "NEWEST") ChallengeSort sort,
 			@RequestParam(defaultValue = "1") @Min(1) int page) {
-		return challengeService.list(new Filter(q, categories, difficulties), sort, page);
+		return challengeService.listChallenges(new Filter(q, categories, difficulties), sort, page);
 	}
 
 	@GetMapping("/api/challenges/{id}")
-	ChallengeDetailResponse get(@PathVariable long id) {
-		return challengeService.get(id);
+	ChallengeDetailResponse getChallenge(@PathVariable long id) {
+		return challengeService.getChallenge(id);
 	}
 
 }

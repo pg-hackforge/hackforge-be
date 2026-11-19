@@ -27,7 +27,7 @@ public class ChallengeService {
 	private final ChallengeQueryRepository challengeQueryRepository;
 
 	/** 범위를 넘은 페이지는 빈 목록이고 개수는 그대로다 */
-	public ChallengePageResponse list(Filter filter, ChallengeSort sort, int page) {
+	public ChallengePageResponse listChallenges(Filter filter, ChallengeSort sort, int page) {
 		long totalItems = challengeQueryRepository.count(filter);
 		int totalPages = (int) ((totalItems + PAGE_SIZE - 1) / PAGE_SIZE);
 		List<DifficultyCountResponse> difficulties = challengeQueryRepository.countByDifficulty(filter)
@@ -41,7 +41,7 @@ public class ChallengeService {
 				new ChallengeFacetsResponse(challengeQueryRepository.countByCategory(filter), difficulties));
 	}
 
-	public ChallengeDetailResponse get(long id) {
+	public ChallengeDetailResponse getChallenge(long id) {
 		return challengeQueryRepository.findDetail(id)
 			.orElseThrow(() -> new ApiException(ErrorCode.CHALLENGE_NOT_FOUND));
 	}
