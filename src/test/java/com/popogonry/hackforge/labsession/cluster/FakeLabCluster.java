@@ -30,6 +30,10 @@ public class FakeLabCluster implements LabCluster {
 
 	private final Set<Long> closedTargets = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+	private final Map<Long, java.util.List<FakeShell>> shells = new java.util.concurrent.ConcurrentHashMap<>();
+
+	private volatile boolean shellFailure;
+
 	private Runnable onCreatePod = () -> {
 	};
 
@@ -83,6 +87,28 @@ public class FakeLabCluster implements LabCluster {
 	@Override
 	public void closeTarget(long sessionId) {
 		closedTargets.add(sessionId);
+	}
+
+	/** 연 셸은 {@link #shells}로 꺼내 쓴다 */
+	@Override
+	public LabShell openShell(long sessionId) {
+		throwIfFailing(sessionId);
+		if (shellFailure) {
+			throw new LabClusterException(new ApiException(500, "exec 실패"));
+		}
+		FakeShell shell = new FakeShell();
+		shells.computeIfAbsent(sessionId, id -> new java.util.concurrent.CopyOnWriteArrayList<>()).add(shell);
+		return shell;
+	}
+
+	/** 이 세션에 연 셸들. 연 순서대로 */
+	public java.util.List<FakeShell> shells(long sessionId) {
+		return shells.getOrDefault(sessionId, java.util.List.of());
+	}
+
+	/** true면 셸 열기가 실패한다 */
+	public void failShell(boolean fail) {
+		this.shellFailure = fail;
 	}
 
 	@Override
@@ -166,6 +192,8 @@ public class FakeLabCluster implements LabCluster {
 		logFailures.clear();
 		targetPorts.clear();
 		closedTargets.clear();
+		shells.clear();
+		shellFailure = false;
 		onCreatePod = () -> {
 		};
 	}

@@ -3,9 +3,6 @@ package com.popogonry.hackforge.labsession.gateway;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.net.CookieManager;
-import java.net.CookiePolicy;
-import java.net.HttpCookie;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.URI;
@@ -36,6 +33,7 @@ import com.popogonry.hackforge.challenge.TestChallenges;
 import com.popogonry.hackforge.labsession.cluster.FakeLabCluster;
 import com.popogonry.hackforge.labsession.cluster.LabCluster;
 import com.popogonry.hackforge.labsession.service.ActivityTracker;
+import com.popogonry.hackforge.user.TestBrowser;
 import com.sun.net.httpserver.HttpServer;
 
 /**
@@ -134,54 +132,11 @@ class TargetGatewayTests {
 		}
 	}
 
-	/** 쿠키를 저장하고 보내는 브라우저. 쿠키는 포트를 구분하지 않는다(RFC 6265) */
-	record Browser(HttpClient http, CookieManager cookies) {
-
-		String cookie(String name) {
-			return cookies.getCookieStore()
-				.getCookies()
-				.stream()
-				.filter(c -> c.getName().equals(name))
-				.map(HttpCookie::getValue)
-				.findFirst()
-				.orElse(null);
-		}
-
+	TestBrowser login(String nickname) throws Exception {
+		return TestBrowser.login(platformPort, jdbcTemplate, passwordEncoder, nickname);
 	}
 
-	Browser browser() {
-		CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
-		return new Browser(HttpClient.newBuilder().cookieHandler(cookies).build(), cookies);
-	}
-
-	/** 승인된 학습자로 로그인한 브라우저 */
-	Browser login(String nickname) throws Exception {
-		jdbcTemplate.update("""
-				insert into users (email, password_hash, name, nickname, affiliation, role, status, privacy_agreed_at, created_at)
-				values (?, ?, '홍길동', ?, '학교', 'LEARNER', 'APPROVED', now(), now())
-				""", nickname + "@example.com", passwordEncoder.encode("Passw0rd!"), nickname);
-		Browser browser = browser();
-		platform(browser, "GET", "/api/me", null);
-		HttpResponse<String> res = platform(browser, "POST", "/api/auth/login", """
-				{"email":"%s@example.com","password":"Passw0rd!"}""".formatted(nickname));
-		assertThat(res.statusCode()).isEqualTo(200);
-		return browser;
-	}
-
-	HttpResponse<String> platform(Browser browser, String method, String path, String json) throws Exception {
-		HttpRequest.Builder req = HttpRequest.newBuilder(URI.create("http://localhost:" + platformPort + path));
-		String xsrf = browser.cookie("XSRF-TOKEN");
-		if (xsrf != null) {
-			req.header("X-XSRF-TOKEN", xsrf);
-		}
-		if (json != null) {
-			req.header("Content-Type", "application/json");
-		}
-		req.method(method, json == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(json));
-		return browser.http().send(req.build(), HttpResponse.BodyHandlers.ofString());
-	}
-
-	HttpResponse<String> target(Browser browser, String method, String path, String body) throws Exception {
+	HttpResponse<String> target(TestBrowser browser, String method, String path, String body) throws Exception {
 		HttpRequest.Builder req = HttpRequest.newBuilder(URI.create("http://localhost:" + TARGET_PORT + path))
 			.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body));
 		if (body != null) {
@@ -202,7 +157,7 @@ class TargetGatewayTests {
 
 	@Test
 	void forwardsPathQueryMethodBodyAndBrowserHost() throws Exception {
-		Browser kim = login("kim");
+		TestBrowser kim = login("kim");
 		readySession("kim");
 
 		HttpResponse<String> res = target(kim, "POST", "/login.php?next=%2F", "username=admin&password=x");
@@ -218,7 +173,7 @@ class TargetGatewayTests {
 	/** 플랫폼 API 경로도 공격 대상으로 간다. 공격 대상 포트에서 플랫폼은 응답하지 않는다 */
 	@Test
 	void platformPathsAreForwardedToTarget() throws Exception {
-		Browser kim = login("kim");
+		TestBrowser kim = login("kim");
 		readySession("kim");
 
 		HttpResponse<String> res = target(kim, "GET", "/api/me", null);
@@ -230,7 +185,7 @@ class TargetGatewayTests {
 	/** 공격 대상 앱의 폼은 플랫폼 CSRF 헤더 없이 동작해야 한다 */
 	@Test
 	void noCsrfCheckOnTargetPort() throws Exception {
-		Browser kim = login("kim");
+		TestBrowser kim = login("kim");
 		readySession("kim");
 
 		assertThat(target(kim, "POST", "/", "a=1").statusCode()).isEqualTo(200);
@@ -238,10 +193,10 @@ class TargetGatewayTests {
 
 	@Test
 	void platformCookiesAndCsrfHeaderAreNotForwarded() throws Exception {
-		Browser kim = login("kim");
+		TestBrowser kim = login("kim");
 		readySession("kim");
 		target(kim, "GET", "/", null);
-		kim.cookies().getCookieStore().add(URI.create("http://localhost"), cookie("PHPSESSID", "app1"));
+		kim.addCookie("PHPSESSID", "app1");
 
 		HttpRequest req = HttpRequest.newBuilder(URI.create("http://localhost:" + TARGET_PORT + "/"))
 			.header("X-XSRF-TOKEN", kim.cookie("XSRF-TOKEN"))
@@ -258,7 +213,7 @@ class TargetGatewayTests {
 	/** 공격 대상 앱은 플랫폼 cookie를 덮을 수 없고, iframe은 플랫폼 화면에서만 띄울 수 있다 */
 	@Test
 	void responseHeadersAreFiltered() throws Exception {
-		Browser kim = login("kim");
+		TestBrowser kim = login("kim");
 		readySession("kim");
 		String platformSession = kim.cookie("SESSION");
 		appHeaders.put("Set-Cookie", List.of("SESSION=evil; Path=/", "XSRF-TOKEN=evil; Path=/", "PHPSESSID=app1; Path=/"));
@@ -276,8 +231,8 @@ class TargetGatewayTests {
 	/** 실습이 바뀌면 이전 실습의 공격 대상 cookie를 지우고 넘기지 않는다 */
 	@Test
 	void cookiesFromPreviousLabAreCleared() throws Exception {
-		Browser kim = login("kim");
-		kim.cookies().getCookieStore().add(URI.create("http://localhost"), cookie("PHPSESSID", "old"));
+		TestBrowser kim = login("kim");
+		kim.addCookie("PHPSESSID", "old");
 		long id = readySession("kim");
 
 		HttpResponse<String> first = target(kim, "GET", "/", null);
@@ -286,7 +241,7 @@ class TargetGatewayTests {
 		assertThat(first.headers().allValues("Set-Cookie")).anyMatch(c -> c.startsWith("PHPSESSID=;") && c.contains("Max-Age=0"))
 			.anyMatch(c -> c.startsWith("HACKFORGE_TARGET_LAB=" + id + ";"));
 
-		kim.cookies().getCookieStore().add(URI.create("http://localhost"), cookie("PHPSESSID", "new"));
+		kim.addCookie("PHPSESSID", "new");
 		target(kim, "GET", "/", null);
 		assertThat(received.get("cookie")).contains("PHPSESSID=new");
 	}
@@ -294,7 +249,7 @@ class TargetGatewayTests {
 	/** redirect는 따라가지 않고 그대로 브라우저에 준다 */
 	@Test
 	void redirectIsPassedThrough() throws Exception {
-		Browser kim = login("kim");
+		TestBrowser kim = login("kim");
 		readySession("kim");
 		appStatus = 302;
 		appHeaders.put("Location", List.of("/welcome.php"));
@@ -307,7 +262,7 @@ class TargetGatewayTests {
 
 	@Test
 	void anonymousGetsLoginPage() throws Exception {
-		HttpResponse<String> res = target(browser(), "GET", "/", null);
+		HttpResponse<String> res = target(TestBrowser.anonymous(platformPort), "GET", "/", null);
 
 		assertThat(res.statusCode()).isEqualTo(401);
 		assertThat(res.headers().firstValue("Content-Type")).hasValueSatisfying(t -> assertThat(t).startsWith("text/html"));
@@ -319,7 +274,7 @@ class TargetGatewayTests {
 	void learnerWithoutReadySessionGetsNotReadyPage() throws Exception {
 		login("kim");
 		readySession("kim");
-		Browser lee = login("lee");
+		TestBrowser lee = login("lee");
 
 		assertThat(target(lee, "GET", "/", null).statusCode()).isEqualTo(409);
 		assertThat(received).isEmpty();
@@ -327,7 +282,7 @@ class TargetGatewayTests {
 
 	@Test
 	void unreachableTargetIsBadGateway() throws Exception {
-		Browser kim = login("kim");
+		TestBrowser kim = login("kim");
 		readySession("kim");
 		app.stop(0);
 
@@ -336,7 +291,7 @@ class TargetGatewayTests {
 
 	@Test
 	void slowTargetIsGatewayTimeout() throws Exception {
-		Browser kim = login("kim");
+		TestBrowser kim = login("kim");
 		readySession("kim");
 		appDelay = Duration.ofSeconds(3);
 
@@ -345,19 +300,12 @@ class TargetGatewayTests {
 
 	@Test
 	void targetRequestIsActivity() throws Exception {
-		Browser kim = login("kim");
+		TestBrowser kim = login("kim");
 		long id = readySession("kim");
 
 		target(kim, "GET", "/", null);
 
 		assertThat(activityTracker.latest(id)).isPresent();
-	}
-
-	static HttpCookie cookie(String name, String value) {
-		HttpCookie cookie = new HttpCookie(name, value);
-		cookie.setPath("/");
-		cookie.setVersion(0);
-		return cookie;
 	}
 
 }
