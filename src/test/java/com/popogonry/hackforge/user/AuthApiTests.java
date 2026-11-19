@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
+import java.util.Locale;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -117,6 +118,34 @@ class AuthApiTests {
 			.andExpect(jsonPath("$.errors[*].field",
 					containsInAnyOrder("email", "password", "name", "nickname", "privacyAgreed")));
 		assertThat(jdbcTemplate.queryForObject("select count(*) from users", Integer.class)).isZero();
+	}
+
+	/** fe가 입력 칸 아래에 그대로 보여 주는 문구. 서버 JVM의 언어 설정과 관계없이 한국어 해요체 */
+	@Test
+	void signupFieldErrorsAreKoreanMessages() throws Exception {
+		Locale before = Locale.getDefault();
+		Locale.setDefault(Locale.US);
+		try {
+			String json = """
+					{"email":"not-an-email","password":"password","name":"","nickname":"a b",
+					 "affiliation":"%s","privacyAgreed":false}
+					""".formatted("가".repeat(101));
+			apiClient.post("/api/auth/signup", json)
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.title").value("입력한 내용을 다시 확인해 주세요"))
+				.andExpect(jsonPath("$.errors[?(@.field == 'email')].message").value("이메일 형식이 맞지 않아요"))
+				.andExpect(jsonPath("$.errors[?(@.field == 'password')].message")
+					.value("8~64자로 영문, 숫자, 특수문자를 하나 이상씩 넣어 주세요"))
+				.andExpect(jsonPath("$.errors[?(@.field == 'name')].message").value("이름을 입력해 주세요"))
+				.andExpect(jsonPath("$.errors[?(@.field == 'nickname')].message")
+					.value("2~20자의 한글, 영문, 숫자, _만 쓸 수 있어요"))
+				.andExpect(jsonPath("$.errors[?(@.field == 'affiliation')].message").value("100자까지 입력할 수 있어요"))
+				.andExpect(jsonPath("$.errors[?(@.field == 'privacyAgreed')].message")
+					.value("개인정보 수집·이용에 동의해 주세요"));
+		}
+		finally {
+			Locale.setDefault(before);
+		}
 	}
 
 	@Test
