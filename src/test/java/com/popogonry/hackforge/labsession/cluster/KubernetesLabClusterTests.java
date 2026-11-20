@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -49,7 +53,7 @@ class KubernetesLabClusterTests {
 		String kubeconfig = System.getenv("HACKFORGE_LAB_KUBECONFIG");
 		assertThat(kubeconfig).as("환경 변수 HACKFORGE_LAB_KUBECONFIG").isNotBlank();
 		labCluster = new KubernetesLabCluster(new LabProperties(kubeconfig, "500m", "512Mi", "2Gi", 2, Duration.ofMinutes(5),
-				Duration.ofMinutes(30), Duration.ofMinutes(5)));
+				Duration.ofMinutes(30), Duration.ofMinutes(5), 0, 5173, Duration.ofSeconds(30), Duration.ofMinutes(1)));
 		core = new CoreV1Api(Config.fromConfig(kubeconfig));
 	}
 
@@ -62,7 +66,7 @@ class KubernetesLabClusterTests {
 	}
 
 	@Test
-	void createsLabThatBecomesReadyAndDeletesIt() throws ApiException {
+	void createsLabThatBecomesReadyAndDeletesIt() throws Exception {
 		assertThat(labCluster.namespaceExists(SESSION)).isFalse();
 		assertThat(labCluster.getPodStatus(SESSION)).isEqualTo(LabPodStatus.ABSENT);
 
@@ -92,6 +96,19 @@ class KubernetesLabClusterTests {
 		// ADR 021. 백엔드는 이 namespace의 RoleBinding(lab-log-reader)으로만 Pod 로그를 읽을 수 있다.
 		// 백엔드에는 RoleBinding 조회 권한이 없으므로 로그를 읽은 것으로 RoleBinding을 확인한다. 시작 스크립트의 단계 기록이 모두 있다
 		assertThat(LabPrepStep.fromStartLog(labCluster.readPodLog(SESSION))).isEqualTo(LabPrepStep.STARTING);
+
+		// ADR 022. RoleBinding lab-connect로 port-forward해서 Pod 안 공격 대상 웹(8080)이 백엔드 안 포트로 열린다. 같은 포트를 재사용한다
+		int port = labCluster.targetPort(SESSION);
+		assertThat(labCluster.targetPort(SESSION)).isEqualTo(port);
+		HttpClient http = HttpClient.newHttpClient();
+		for (int i = 0; i < 3; i++) {
+			HttpResponse<String> page = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/")).build(),
+					HttpResponse.BodyHandlers.ofString());
+			assertThat(page.statusCode()).isEqualTo(200);
+		}
+		labCluster.closeTarget(SESSION);
+		assertThatThrownBy(() -> http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/")).build(),
+				HttpResponse.BodyHandlers.ofString())).isInstanceOf(java.io.IOException.class);
 
 		labCluster.deletePod(SESSION);
 		assertThat(labCluster.getPodStatus(SESSION)).isIn(LabPodStatus.DELETING, LabPodStatus.ABSENT);

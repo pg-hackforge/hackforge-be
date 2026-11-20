@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.util.function.SingletonSupplier;
 
+import io.kubernetes.client.PortForward;
 import io.kubernetes.client.custom.Quantity;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
@@ -67,6 +69,9 @@ class KubernetesLabCluster implements LabCluster {
 	/** namespace마다 Pod는 하나라 이름을 고정한다(ADR 013). 중복 생성이 이름으로 막힌다 */
 	static final String POD_NAME = "lab";
 
+	/** Pod 안 공격 대상 웹 포트. 모든 문제가 {@code 127.0.0.1:8080}이다(ADR 022, Challenge 형식 규칙) */
+	static final int TARGET_POD_PORT = 8080;
+
 	/**
 	 * Pod 로그를 읽는 크기 상한. 준비 중 로그(dockerd 시작 로그와 단계 기록)는 수십 KB다.
 	 * ponytail: 처음부터 이만큼만 읽는다. dockerd 로그가 늘어 단계 기록이 상한 뒤로 밀리면 그 단계에 머무르므로, 그때는 sinceSeconds로 바꾼다
@@ -92,6 +97,9 @@ class KubernetesLabCluster implements LabCluster {
 	// SingletonSupplier는 처음 get()을 부를 때 한 번만 만들고 그다음부터는 같은 객체를 돌려준다.
 	// 접속을 생성자가 아니라 첫 호출 때 하므로, 클러스터가 없는 테스트와 CI에서도 애플리케이션이 뜬다
 	private final Supplier<ApiClient> client;
+
+	/** 세션별 공격 대상 연결(ADR 022) */
+	private final Map<Long, TargetTunnel> tunnels = new ConcurrentHashMap<>();
 
 	KubernetesLabCluster(LabProperties labProperties) {
 		this.cpu = Quantity.fromString(labProperties.cpu());
@@ -139,14 +147,21 @@ class KubernetesLabCluster implements LabCluster {
 					"requests.memory", memory, "limits.memory", memory, "requests.ephemeral-storage", disk))))
 			.execute());
 
-		// apiVersion: rbac.authorization.k8s.io/v1 / kind: RoleBinding
-		// metadata: { name: lab-log-reader }
-		// roleRef: { kind: ClusterRole, name: hackforge-lab-log-reader }
-		// subjects: [{ kind: ServiceAccount, namespace: hackforge, name: hackforge-backend }]
-		// 백엔드가 이 namespace의 Pod 로그만 읽게 한다(ADR 021). 역할과 대상은 admission policy가 이 값만 허용한다
+		// 백엔드가 이 namespace에서만 Pod 로그를 읽고(ADR 021), 공격 대상 port-forward와 터미널 exec를 하게 한다(ADR 022)
+		createRoleBinding(namespace, "lab-log-reader", "hackforge-lab-log-reader");
+		createRoleBinding(namespace, "lab-connect", "hackforge-lab-connect");
+	}
+
+	/**
+	 * apiVersion: rbac.authorization.k8s.io/v1 / kind: RoleBinding
+	 * metadata: { name: <name> } / roleRef: { kind: ClusterRole, name: <role> }
+	 * subjects: [{ kind: ServiceAccount, namespace: hackforge, name: hackforge-backend }]
+	 * 역할과 대상은 admission policy가 이 값만 허용한다
+	 */
+	private void createRoleBinding(String namespace, String name, String role) {
 		ignoreConflict(() -> rbac().createNamespacedRoleBinding(namespace, new V1RoleBinding()
-			.metadata(new V1ObjectMeta().name("lab-log-reader"))
-			.roleRef(new V1RoleRef().apiGroup("rbac.authorization.k8s.io").kind("ClusterRole").name("hackforge-lab-log-reader"))
+			.metadata(new V1ObjectMeta().name(name))
+			.roleRef(new V1RoleRef().apiGroup("rbac.authorization.k8s.io").kind("ClusterRole").name(role))
 			.addSubjectsItem(new RbacV1Subject().kind("ServiceAccount").namespace("hackforge").name("hackforge-backend")))
 			.execute());
 	}
@@ -274,14 +289,42 @@ class KubernetesLabCluster implements LabCluster {
 		}
 	}
 
+	/** 세션마다 하나씩 열어 두고 재사용한다. 닫혔으면(Pod 재시도, 종료) 새로 연다 */
+	@Override
+	public int targetPort(long sessionId) {
+		return tunnels.compute(sessionId, (id, tunnel) -> {
+			if (tunnel != null && !tunnel.isClosed()) {
+				return tunnel;
+			}
+			try {
+				// kubectl port-forward lab -n lab-<id> <빈 포트>:8080 과 같다
+				return new TargetTunnel(id, TARGET_POD_PORT,
+						() -> new PortForward(client.get()).forward(namespace(id), POD_NAME, List.of(TARGET_POD_PORT)));
+			}
+			catch (IOException e) {
+				throw new UncheckedIOException("공격 대상 연결용 포트를 열지 못함", e);
+			}
+		}).port();
+	}
+
+	@Override
+	public void closeTarget(long sessionId) {
+		TargetTunnel tunnel = tunnels.remove(sessionId);
+		if (tunnel != null) {
+			tunnel.close();
+		}
+	}
+
 	@Override
 	public void deletePod(long sessionId) {
+		closeTarget(sessionId);
 		// 없으면(404) 이미 지워진 것으로 본다
 		ignoreNotFound(() -> core().deleteNamespacedPod(POD_NAME, namespace(sessionId)).execute());
 	}
 
 	@Override
 	public void deleteNamespace(long sessionId) {
+		closeTarget(sessionId);
 		// namespace를 지우면 안의 Pod, NetworkPolicy, ResourceQuota도 Kubernetes가 함께 지운다.
 		// 요청은 바로 응답하고 실제 삭제는 수십 초 걸린다. 끝났는지는 namespaceExists로 본다
 		ignoreNotFound(() -> core().deleteNamespace(namespace(sessionId)).execute());

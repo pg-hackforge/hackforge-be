@@ -20,9 +20,16 @@ class LabReconcileSchedule {
 
 	private final LabReconciler labReconciler;
 
+	private final ActivityTracker activityTracker;
+
 	@Scheduled(fixedDelayString = "${hackforge.lab.reconcile-interval}")
 	void reconcile() {
 		labReconciler.reconcileAll();
+	}
+
+	@Scheduled(fixedDelayString = "${hackforge.lab.activity-flush-interval}")
+	void flushActivity() {
+		activityTracker.flush();
 	}
 
 	@Scheduled(fixedDelayString = "${hackforge.lab.orphan-cleanup-interval}")

@@ -40,6 +40,8 @@ public class LabReconciler {
 
 	private final LabProperties labProperties;
 
+	private final ActivityTracker activityTracker;
+
 	private final Clock clock;
 
 	private final TransactionTemplate transactionTemplate;
@@ -143,7 +145,8 @@ public class LabReconciler {
 
 	/** 마지막 활동 뒤 idle-timeout이 지났거나, 실습 중 Pod가 죽거나(메모리·디스크 초과 등) 사라짐 */
 	private String ready(LabSession session, Instant now) {
-		if (session.idleDeadline(labProperties.idleTimeout()).isBefore(now)) {
+		Instant recent = activityTracker.latest(session.getId()).orElse(null);
+		if (session.idleDeadline(labProperties.idleTimeout(), recent).isBefore(now)) {
 			session.terminate(LabEndReason.IDLE, now);
 			return "idle-timeout 초과";
 		}

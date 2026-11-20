@@ -10,8 +10,8 @@ import java.util.Set;
 public interface LabCluster {
 
 	/**
-	 * namespace, NetworkPolicy {@code deny-all}, ResourceQuota {@code lab}, Pod 로그 읽기 RoleBinding {@code lab-log-reader}
-	 * 순서로 만든다.
+	 * namespace, NetworkPolicy {@code deny-all}, ResourceQuota {@code lab}, Pod 로그 읽기 RoleBinding {@code lab-log-reader},
+	 * 공격 대상·터미널 연결 RoleBinding {@code lab-connect} 순서로 만든다.
 	 */
 	void createNamespace(long sessionId);
 
@@ -24,6 +24,15 @@ public interface LabCluster {
 	 * 컨테이너가 시작 전이거나 권한이 아직 반영되지 않았으면 {@link LabClusterException}.
 	 */
 	String readPodLog(long sessionId);
+
+	/**
+	 * 세션 Pod 안 공격 대상 웹({@code 127.0.0.1:8080})으로 이어지는 백엔드 안 {@code 127.0.0.1}의 포트(ADR 022).
+	 * 처음 부를 때 열고 그다음부터 재사용한다. 이 포트로 들어온 연결마다 port-forward를 하나씩 연다.
+	 */
+	int targetPort(long sessionId);
+
+	/** {@link #targetPort}로 연 포트와 그 연결을 닫는다. 없으면 아무것도 하지 않는다 */
+	void closeTarget(long sessionId);
 
 	void deletePod(long sessionId);
 
