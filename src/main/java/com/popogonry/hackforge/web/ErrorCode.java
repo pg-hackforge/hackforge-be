@@ -28,7 +28,7 @@ public enum ErrorCode {
 	LAB_ALREADY_ACTIVE(HttpStatus.CONFLICT, "이미 진행 중인 실습이 있어요"),
 	LAB_NOT_READY(HttpStatus.CONFLICT, "실습 환경이 아직 준비되지 않았어요"),
 	LAB_CAPACITY_FULL(HttpStatus.SERVICE_UNAVAILABLE, "지금은 실습 자리가 모두 찼어요. 잠시 뒤 다시 시도해 주세요"),
-	VERIFICATION_RUNNING(HttpStatus.CONFLICT, "이미 검증이 진행 중이에요. 결과가 나온 뒤 다시 시도해 주세요"),
+	LAB_JOB_RUNNING(HttpStatus.CONFLICT, "검증, 재배포, 초기화 중 하나가 진행 중이에요. 끝난 뒤 다시 시도해 주세요"),
 	VERIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "검증 기록을 찾을 수 없어요"),
 	WRONG_LAB_STAGE(HttpStatus.CONFLICT, "지금 단계에서는 할 수 없어요"),
 	NO_MORE_HINTS(HttpStatus.CONFLICT, "더 볼 수 있는 힌트가 없어요"),

@@ -231,7 +231,7 @@ class AttackStageApiTests {
 
 		kim.post("/api/labs/" + id + "/attack-verifications", null)
 			.andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value("VERIFICATION_RUNNING"));
+			.andExpect(jsonPath("$.code").value("LAB_JOB_RUNNING"));
 
 		release.countDown();
 		awaitFinished(first);
