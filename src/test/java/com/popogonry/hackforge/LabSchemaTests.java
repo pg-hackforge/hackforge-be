@@ -93,6 +93,22 @@ class LabSchemaTests {
 		assertThat(jdbcTemplate.queryForObject("select count(*) from verifications", Long.class)).isZero();
 	}
 
+	/** ADR 024. 재배포·초기화도 세션마다 RUNNING 하나. 수정 불가 목록은 비워 둘 수 있다(기본값 사용) */
+	@Test
+	void onlyOneRunningRedeployPerSession() {
+		insertSession("READY");
+		long id = sessionId();
+		String insert = "insert into redeploys (session_id, kind, status, started_at) values (?, ?, ?, now())";
+		jdbcTemplate.update(insert, id, "REDEPLOY", "SUCCESS");
+		jdbcTemplate.update(insert, id, "RESET", "RUNNING");
+
+		assertThatThrownBy(() -> jdbcTemplate.update(insert, id, "REDEPLOY", "RUNNING"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> jdbcTemplate.update(insert, id, "BUILD", "FAIL"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+		assertThat(jdbcTemplate.queryForObject("select readonly_paths from challenges", String.class)).isNull();
+	}
+
 	@Test
 	void stageStartsAtAttackAndRejectsUnknown() {
 		insertSession("READY");

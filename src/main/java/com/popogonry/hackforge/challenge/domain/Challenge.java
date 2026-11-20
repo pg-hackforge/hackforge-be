@@ -39,6 +39,9 @@ public class Challenge {
 	/** 공격 검증 스크립트 본문(ADR 014). 실습 Pod 안에서 실행한다(ADR 023) */
 	private String attackCheck;
 
+	/** 수정 불가 파일(/app 기준 glob, 빈칸으로 나눔). null이면 백엔드 기본값(ADR 024) */
+	private String readonlyPaths;
+
 	private Instant createdAt;
 
 }

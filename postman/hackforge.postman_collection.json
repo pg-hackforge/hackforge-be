@@ -1747,7 +1747,7 @@
     },
     {
       "name": "9. 실습",
-      "description": "시작 요청은 세션 행만 만들고 202로 바로 응답한다. reconciler가 3초마다 namespace와 Pod를 만들고 상태를 CREATING → INITIALIZING → READY로 바꾼다(ADR 012). READY가 되면 targetUrl(공격 대상 포트, 개발 8081)로 공격 대상 페이지를 연다(ADR 022). 공격 힌트 공개와 공격 검증(비동기, 결과는 polling)도 해 본다(ADR 023). 공격하지 않았으니 결과는 FAIL이다. 준비 중에는 prepStep이 SPACE → CONTAINER → LOADING → STARTING 순서로 바뀌고 READY에서 null이 된다(ADR 021). 개발 VM에서 sqli-login은 READY까지 약 70초.\n준비: bootRun 전에 환경 변수 HACKFORGE_LAB_KUBECONFIG에 백엔드 kubeconfig 경로를 넣는다(hackforge-be CLAUDE.md). 문제 이미지가 노드에 import돼 있어야 한다.\n'상태 조회'와 '종료 확인'은 손으로 보낼 때는 원하는 상태가 될 때까지 다시 누르고, Runner에서는 3초 간격으로 알아서 반복한다.\nREADY가 된 뒤 공격과 방어는 관리자 kubectl로 Pod 안에서 한다. 학습자용 API는 #8(공격 대상 화면과 웹 터미널), #9(공격 검증), #11(방어 검증)에서 만든다.",
+      "description": "시작 요청은 세션 행만 만들고 202로 바로 응답한다. reconciler가 3초마다 namespace와 Pod를 만들고 상태를 CREATING → INITIALIZING → READY로 바꾼다(ADR 012). READY가 되면 targetUrl(공격 대상 포트, 개발 8081)로 공격 대상 페이지를 연다(ADR 022). 공격 힌트 공개와 공격 검증(비동기, 결과는 polling)도 해 본다(ADR 023). 공격하지 않았으니 결과는 FAIL이다. 준비 중에는 prepStep이 SPACE → CONTAINER → LOADING → STARTING 순서로 바뀌고 READY에서 null이 된다(ADR 021). 개발 VM에서 sqli-login은 READY까지 약 70초. 방어 단계에서는 웹 IDE 파일 API, 재배포, 서비스 초기화, 실습 환경 다시 만들기, 방어 힌트를 쓴다(ADR 024).\n준비: bootRun 전에 환경 변수 HACKFORGE_LAB_KUBECONFIG에 백엔드 kubeconfig 경로를 넣는다(hackforge-be CLAUDE.md). 문제 이미지가 노드에 import돼 있어야 한다.\n'상태 조회'와 '종료 확인'은 손으로 보낼 때는 원하는 상태가 될 때까지 다시 누르고, Runner에서는 3초 간격으로 알아서 반복한다.\nREADY가 된 뒤 공격과 방어는 관리자 kubectl로 Pod 안에서 한다. 학습자용 API는 #8(공격 대상 화면과 웹 터미널), #9(공격 검증), #10(방어: 웹 IDE, 재빌드·재배포, 초기화), #11(방어 검증)에서 만든다.",
       "item": [
         {
           "name": "학습자 로그인 (승인됨)",
@@ -2166,6 +2166,605 @@
               ]
             },
             "description": "이 세션의 공격·방어 검증을 최근 순으로 준다."
+          }
+        },
+        {
+          "name": "공격 건너뛰기 (방어 단계로)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200, 또는 검증 통과로 이미 방어 단계면 409', () => pm.expect([200, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) pm.test('.stage = DEFENSE', () => pm.expect(pm.response.json().stage).to.eql('DEFENSE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/attack-skip",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "attack-skip"
+              ]
+            },
+            "description": "공격 검증을 통과하지 않아도 언제든 방어 단계로 넘어간다(ADR 023). 아래 파일 API와 재배포는 방어 단계에서만 연다(ADR 024)."
+          }
+        },
+        {
+          "name": "파일 목록",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const files = pm.response.json();",
+                  "pm.test('compose.yaml은 수정 불가', () => pm.expect(files.find(f => f.path === 'compose.yaml').readOnly).to.eql(true));",
+                  "const editable = files.find(f => !f.readOnly && f.openable);",
+                  "pm.test('고칠 수 있는 파일이 있음', () => pm.expect(editable).to.be.an('object'));",
+                  "pm.collectionVariables.set('filePath', editable.path);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/files",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "files"
+              ]
+            },
+            "description": "Pod 안 /app의 파일. 수정 불가(readOnly)는 문제가 정하고, 없으면 compose.yaml, Dockerfile, .sql이 기본값이다. 1MB를 넘거나 텍스트가 아니면 openable이 false다. 고칠 수 있는 첫 파일을 filePath에 넣는다."
+          }
+        },
+        {
+          "name": "파일 열기 ({{filePath}})",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const f = pm.response.json();",
+                  "pm.collectionVariables.set('fileSha', f.sha256);",
+                  "// 끝에 빈 줄 하나를 더해 저장한다",
+                  "pm.collectionVariables.set('saveBody', JSON.stringify({ content: f.content + '\\n', baseSha256: f.sha256 }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/files/content?path={{filePath}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "files",
+                "content"
+              ],
+              "query": [
+                {
+                  "key": "path",
+                  "value": "{{filePath}}"
+                }
+              ]
+            },
+            "description": "내용과 SHA-256을 준다. 저장할 때 이 해시를 baseSha256으로 보내면 그사이 터미널 등에서 바뀐 것을 알 수 있다."
+          }
+        },
+        {
+          "name": "파일 저장",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('해시가 바뀜', () => pm.expect(pm.response.json().sha256).to.not.eql(pm.collectionVariables.get('fileSha')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/files/content?path={{filePath}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "files",
+                "content"
+              ],
+              "query": [
+                {
+                  "key": "path",
+                  "value": "{{filePath}}"
+                }
+              ]
+            },
+            "description": "열 때 받은 해시와 지금 파일이 같을 때만 저장한다. baseSha256을 null로 보내면 확인 없이 덮어쓴다.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{saveBody}}"
+            }
+          }
+        },
+        {
+          "name": "이전 해시로 다시 저장 (충돌)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('.code = FILE_CHANGED', () => pm.expect(pm.response.json().code).to.eql('FILE_CHANGED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/files/content?path={{filePath}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "files",
+                "content"
+              ],
+              "query": [
+                {
+                  "key": "path",
+                  "value": "{{filePath}}"
+                }
+              ]
+            },
+            "description": "같은 요청을 다시 보내면 파일이 이미 바뀌어서 409다. 화면은 다시 불러오거나 덮어쓰기를 고르게 한다.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{saveBody}}"
+            }
+          }
+        },
+        {
+          "name": "파일 되돌리기",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('처음 해시로 돌아옴', () => pm.expect(pm.response.json().sha256).to.eql(pm.collectionVariables.get('fileSha')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/files/revert?path={{filePath}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "files",
+                "revert"
+              ],
+              "query": [
+                {
+                  "key": "path",
+                  "value": "{{filePath}}"
+                }
+              ]
+            },
+            "description": "이미지에 들어 있는 원본(/hackforge/original)으로 파일 하나를 되돌린다. 원본이 없는 이미지면 404다."
+          }
+        },
+        {
+          "name": "방어 힌트 공개 (1번)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.position = 1, .stage = DEFENSE', () => { pm.expect(pm.response.json().position).to.eql(1); pm.expect(pm.response.json().stage).to.eql('DEFENSE'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/defense-hints",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "defense-hints"
+              ]
+            },
+            "description": "공격 힌트와 같은 규칙으로 1 → 2 → 3 순서로 공개한다. 방어 단계에서만 된다(ADR 024)."
+          }
+        },
+        {
+          "name": "재배포 요청",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.test('.kind = REDEPLOY, .status = RUNNING', () => { pm.expect(pm.response.json().kind).to.eql('REDEPLOY'); pm.expect(pm.response.json().status).to.eql('RUNNING'); });",
+                  "pm.collectionVariables.set('redeployId', pm.response.json().id);",
+                  "pm.collectionVariables.set('pollCount', 0);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/redeploys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "redeploys"
+              ]
+            },
+            "description": "docker compose build, up -d를 하고 서비스가 healthy가 되기를 기다린다(제한 3분). 접수만 하고 바로 응답한다. 검증, 재배포, 초기화는 세션마다 하나씩만 실행한다."
+          }
+        },
+        {
+          "name": "재배포 결과 (끝날 때까지)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Runner로 반복할 때마다 1초 쉰다",
+                  "if (pm.collectionVariables.get('pollCount')) {",
+                  "  setTimeout(() => {}, 1000);",
+                  "}",
+                  "const r = pm.response.json();",
+                  "const n = (pm.collectionVariables.get('pollCount') || 0) + 1;",
+                  "if (r.status === 'RUNNING' && n < 240) {",
+                  "  pm.collectionVariables.set('pollCount', n);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.collectionVariables.set('pollCount', 0);",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('결과: ' + r.status + ' - ' + r.message, () => pm.expect([\"SUCCESS\", \"FAIL\"]).to.include(r.status));",
+                  "pm.test('빌드 로그가 있음', () => pm.expect(r.log).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/redeploys/{{redeployId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "redeploys",
+                "{{redeployId}}"
+              ]
+            },
+            "description": "끝날 때까지 RUNNING이다. 한 건 조회에만 빌드 로그(끝 64KB)가 있다."
+          }
+        },
+        {
+          "name": "재배포 기록",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('최근 순, 목록에는 로그가 없음', () => { pm.expect(pm.response.json()).to.not.be.empty; pm.expect(pm.response.json()[0].log).to.eql(null); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/redeploys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "redeploys"
+              ]
+            },
+            "description": "재배포와 서비스 초기화 기록."
+          }
+        },
+        {
+          "name": "서비스 초기화",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.test('.redeploy.kind = RESET', () => pm.expect(pm.response.json().redeploy.kind).to.eql('RESET'));",
+                  "pm.collectionVariables.set('redeployId', pm.response.json().redeploy.id);",
+                  "pm.collectionVariables.set('pollCount', 0);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "reset"
+              ]
+            },
+            "description": "서비스와 volume(DB)을 지우고 /app을 원본으로 되돌린 뒤 다시 기동한다. keepStage가 false면 공격 단계부터 다시 한다. 결과는 재배포와 같이 조회한다.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"scope\": \"SERVICES\", \"keepStage\": true}"
+            }
+          }
+        },
+        {
+          "name": "서비스 초기화 결과 (끝날 때까지)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Runner로 반복할 때마다 1초 쉰다",
+                  "if (pm.collectionVariables.get('pollCount')) {",
+                  "  setTimeout(() => {}, 1000);",
+                  "}",
+                  "const r = pm.response.json();",
+                  "const n = (pm.collectionVariables.get('pollCount') || 0) + 1;",
+                  "if (r.status === 'RUNNING' && n < 240) {",
+                  "  pm.collectionVariables.set('pollCount', n);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.collectionVariables.set('pollCount', 0);",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('결과: ' + r.status + ' - ' + r.message, () => pm.expect([\"SUCCESS\"]).to.include(r.status));",
+                  "pm.test('빌드 로그가 있음', () => pm.expect(r.log).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/redeploys/{{redeployId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "redeploys",
+                "{{redeployId}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "실습 환경 다시 만들기",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.test('.session.status = CREATING, .redeploy = null', () => { pm.expect(pm.response.json().session.status).to.eql('CREATING'); pm.expect(pm.response.json().redeploy).to.eql(null); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "reset"
+              ]
+            },
+            "description": "Pod를 지우고 새로 만든다(서비스 초기화로 안 될 때). 세션과 기록은 그대로이고 상태만 CREATING부터 다시 간다.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"scope\": \"ENVIRONMENT\", \"keepStage\": true}"
+            }
+          }
+        },
+        {
+          "name": "상태 조회 (다시 READY까지)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Runner로 반복할 때만 3초 쉰다",
+                  "if (pm.collectionVariables.get('pollCount')) {",
+                  "  setTimeout(() => {}, 3000);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const s = pm.response.json().status;",
+                  "// 지나간 준비 단계를 순서대로 모은다(ADR 021)",
+                  "const step = pm.response.json().prepStep;",
+                  "const steps = (pm.collectionVariables.get('prepSteps') || '').split(' → ').filter(x => x);",
+                  "if (step && steps[steps.length - 1] !== step) { steps.push(step); pm.collectionVariables.set('prepSteps', steps.join(' → ')); }",
+                  "const n = (pm.collectionVariables.get('pollCount') || 0) + 1;",
+                  "if (![\"READY\", \"FAILED\"].includes(s) && n < 100) {",
+                  "  pm.collectionVariables.set('pollCount', n);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.collectionVariables.set('pollCount', 0);",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.status = READY', () => pm.expect(pm.response.json().status).to.eql('READY'));",
+                  "pm.test('READY에서 .prepStep = null', () => pm.expect(pm.response.json().prepStep).to.eql(null));",
+                  "pm.test('READY에서 .targetUrl 있음', () => pm.expect(pm.response.json().targetUrl).to.be.a('string'));",
+                  "pm.collectionVariables.set('targetUrl', pm.response.json().targetUrl);",
+                  "pm.test('지나간 준비 단계: ' + pm.collectionVariables.get('prepSteps'), () => pm.expect(pm.collectionVariables.get('prepSteps')).to.include('STARTING'));",
+                  "pm.test('idle 종료 예정 시각 있음', () => pm.expect(pm.response.json().idleDeadline).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}"
+              ]
+            },
+            "description": "READY가 되면 터미널에서 Pod를 확인하고 공격과 방어를 진행한다. namespace는 lab-<labId>, Pod 이름은 lab."
           }
         },
         {

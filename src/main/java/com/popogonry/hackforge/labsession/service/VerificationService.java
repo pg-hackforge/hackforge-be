@@ -33,6 +33,8 @@ public class VerificationService {
 
 	private final ActivityTracker activityTracker;
 
+	private final LabJobGuard labJobGuard;
+
 	private final Clock clock;
 
 	/**
@@ -45,6 +47,8 @@ public class VerificationService {
 		if (lab.getStatus() != LabStatus.READY) {
 			throw new ApiException(ErrorCode.LAB_NOT_READY);
 		}
+		// 검증, 재배포, 초기화 중 하나만(ADR 024). 아래 unique index는 같은 검증끼리의 마지막 방어선
+		labJobGuard.lockAndRequireIdle(labId);
 		Verification verification;
 		try {
 			verification = verificationRepository.saveAndFlush(new Verification(labId, VerificationType.ATTACK, clock.instant()));

@@ -18,14 +18,19 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.popogonry.hackforge.labsession.cluster.LabProperties;
 import com.popogonry.hackforge.labsession.domain.LabSession;
+import com.popogonry.hackforge.labsession.domain.LabStage;
 import com.popogonry.hackforge.labsession.domain.LabStatus;
 import com.popogonry.hackforge.labsession.dto.HintResponse;
 import com.popogonry.hackforge.labsession.dto.LabHintsResponse;
 import com.popogonry.hackforge.labsession.dto.LabSessionResponse;
+import com.popogonry.hackforge.labsession.dto.RedeployResponse;
+import com.popogonry.hackforge.labsession.dto.ResetLabRequest;
+import com.popogonry.hackforge.labsession.dto.ResetLabResponse;
 import com.popogonry.hackforge.labsession.dto.VerificationResponse;
 import com.popogonry.hackforge.labsession.dto.StartLabRequest;
 import com.popogonry.hackforge.labsession.service.ActivityTracker;
 import com.popogonry.hackforge.labsession.service.LabSessionService;
+import com.popogonry.hackforge.labsession.service.RedeployService;
 import com.popogonry.hackforge.labsession.service.VerificationService;
 
 import lombok.RequiredArgsConstructor;
@@ -41,6 +46,8 @@ class LabSessionController {
 	private final ActivityTracker activityTracker;
 
 	private final VerificationService verificationService;
+
+	private final RedeployService redeployService;
 
 	/** 요청마다 다른 객체가 주입되는 request scope proxy. 공격 대상 주소의 호스트를 읽는다 */
 	private final HttpServletRequest request;
@@ -108,6 +115,41 @@ class LabSessionController {
 		return labSessionService.listLabHints(id, userId(authentication));
 	}
 
+	@PostMapping("/api/labs/{id}/defense-hints")
+	HintResponse revealDefenseHint(@PathVariable long id, Authentication authentication) {
+		return labSessionService.revealDefenseHint(id, userId(authentication));
+	}
+
+	/** 접수만 하고 바로 응답한다. 결과는 getRedeploy로 polling한다(ADR 024) */
+	@PostMapping("/api/labs/{id}/redeploys")
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	RedeployResponse requestRedeploy(@PathVariable long id, Authentication authentication) {
+		return RedeployResponse.from(redeployService.requestRedeploy(id, userId(authentication)), false);
+	}
+
+	@GetMapping("/api/labs/{id}/redeploys")
+	List<RedeployResponse> listRedeploys(@PathVariable long id, Authentication authentication) {
+		return redeployService.listRedeploys(id, userId(authentication))
+			.stream()
+			.map(r -> RedeployResponse.from(r, false))
+			.toList();
+	}
+
+	@GetMapping("/api/labs/{id}/redeploys/{redeployId}")
+	RedeployResponse getRedeploy(@PathVariable long id, @PathVariable long redeployId, Authentication authentication) {
+		return RedeployResponse.from(redeployService.getRedeploy(id, redeployId, userId(authentication)), true);
+	}
+
+	@PostMapping("/api/labs/{id}/reset")
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	ResetLabResponse resetLab(@PathVariable long id, @Valid @RequestBody ResetLabRequest body,
+			Authentication authentication) {
+		RedeployService.ResetResult result = redeployService.resetLab(id, userId(authentication), body.scope(),
+				body.keepStage());
+		return new ResetLabResponse(response(result.session()),
+				result.redeploy() == null ? null : RedeployResponse.from(result.redeploy(), false));
+	}
+
 	@PostMapping("/api/labs/{id}/attack-skip")
 	LabSessionResponse skipAttack(@PathVariable long id, Authentication authentication) {
 		return response(labSessionService.skipAttack(id, userId(authentication)));
@@ -115,7 +157,8 @@ class LabSessionController {
 
 	private LabSessionResponse response(LabSession session) {
 		return LabSessionResponse.from(session, labProperties, activityTracker.latest(session.getId()).orElse(null),
-				targetUrl(session), labSessionService.countAttackHintsRevealed(session.getId()));
+				targetUrl(session), labSessionService.countHintsRevealed(session.getId(), LabStage.ATTACK),
+				labSessionService.countHintsRevealed(session.getId(), LabStage.DEFENSE));
 	}
 
 	/**
