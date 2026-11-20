@@ -18,6 +18,13 @@ public interface VerificationRepository extends JpaRepository<Verification, Long
 
 	Optional<Verification> findByIdAndSessionId(long id, long sessionId);
 
+	boolean existsBySessionIdAndStatus(long sessionId, VerificationStatus status);
+
+	/** 남은 {@code RUNNING}을 모두 실패로 끝낸다. 백엔드가 시작할 때만 부른다(ADR 024) */
+	@Modifying
+	@Query("update Verification v set v.status = :error, v.message = :message, v.finishedAt = :now where v.status = :running")
+	int failAll(VerificationStatus running, VerificationStatus error, String message, Instant now);
+
 	/** {@code before}보다 먼저 시작해 아직 {@code RUNNING}인 검증을 실패로 끝낸다(백엔드 재시작, ADR 023). 바뀐 행 수를 반환한다 */
 	@Modifying
 	@Query("""

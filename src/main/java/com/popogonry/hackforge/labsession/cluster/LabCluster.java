@@ -43,6 +43,18 @@ public interface LabCluster {
 	 */
 	ScriptResult runScript(long sessionId, String script, java.time.Duration timeout);
 
+	/** {@code /app} 아래 모든 파일. 경로 순(ADR 024) */
+	java.util.List<PodFile> listFiles(long sessionId);
+
+	/** {@code maxBytes}를 넘으면 {@code TOO_LARGE}로 내용을 보내지 않는다. 경로는 호출하는 쪽이 검사한다 */
+	PodFileRead readFile(long sessionId, String path, int maxBytes);
+
+	/** {@code baseSha256}이 null이 아니고 지금 해시와 다르면 저장하지 않는다. 없던 파일이면 지금 해시는 빈 문자열이다 */
+	PodFileWrite writeFile(long sessionId, String path, byte[] content, String baseSha256);
+
+	/** 원본({@code /hackforge/original})으로 되돌리고 되돌린 내용을 준다. 원본에 없으면 {@code NOT_FOUND} */
+	PodFileRead revertFile(long sessionId, String path);
+
 	void deletePod(long sessionId);
 
 	/** 삭제를 요청만 하고 기다리지 않는다. 끝났는지는 {@link #namespaceExists}로 확인한다. */

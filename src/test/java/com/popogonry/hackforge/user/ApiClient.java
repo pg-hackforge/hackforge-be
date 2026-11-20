@@ -49,7 +49,7 @@ public class ApiClient {
 		return send(req);
 	}
 
-	ResultActions put(String path, String json) throws Exception {
+	public ResultActions put(String path, String json) throws Exception {
 		if (!cookies.containsKey("XSRF-TOKEN")) {
 			get("/api/me");
 		}

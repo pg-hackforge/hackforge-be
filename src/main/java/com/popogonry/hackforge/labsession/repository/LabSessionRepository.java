@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import com.popogonry.hackforge.labsession.domain.LabEndReason;
+import com.popogonry.hackforge.labsession.domain.LabPrepStep;
 import com.popogonry.hackforge.labsession.domain.LabStage;
 import com.popogonry.hackforge.labsession.domain.LabSession;
 import com.popogonry.hackforge.labsession.domain.LabStatus;
@@ -70,6 +71,26 @@ public interface LabSessionRepository extends JpaRepository<LabSession, Long> {
 			where s.id = :id and s.userId = :userId and s.status = :ready and s.stage = :attack
 			""")
 	int skipAttack(long id, long userId, LabStatus ready, LabStage attack, LabStage defense);
+
+	/** 초기화의 "처음부터"(ADR 024). 단계를 공격으로, 건너뜀을 false로 되돌린다. 검증 기록과 공개한 힌트는 남는다 */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("""
+			update LabSession s set s.stage = :attack, s.attackSkipped = false, s.version = s.version + 1
+			where s.id = :id
+			""")
+	int restartStage(long id, LabStage attack);
+
+	/**
+	 * 실습 환경 다시 만들기(ADR 024). {@code READY}인 세션을 생성 단계로 되돌린다. Pod는 호출하는 쪽이 지우고
+	 * reconciler가 새로 만든다. 생성 재시도 횟수는 0부터 다시 센다
+	 */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("""
+			update LabSession s set s.status = :creating, s.prepStep = :space, s.startAttempts = 0, s.statusChangedAt = :now,
+			  s.version = s.version + 1
+			where s.id = :id and s.status = :ready
+			""")
+	int recreate(long id, LabStatus ready, LabStatus creating, LabPrepStep space, Instant now);
 
 	/** 힌트를 순서대로 공개하려고 세션 행을 잠근다. 같은 세션의 공개 요청이 줄을 선다 */
 	@Query(value = "select id from lab_sessions where id = :id for update", nativeQuery = true)
