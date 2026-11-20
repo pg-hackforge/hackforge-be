@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.util.function.SingletonSupplier;
 
+import io.kubernetes.client.Exec;
 import io.kubernetes.client.PortForward;
 import io.kubernetes.client.custom.Quantity;
 import io.kubernetes.client.openapi.ApiClient;
@@ -312,6 +313,28 @@ class KubernetesLabCluster implements LabCluster {
 		TargetTunnel tunnel = tunnels.remove(sessionId);
 		if (tunnel != null) {
 			tunnel.close();
+		}
+	}
+
+	@Override
+	public LabShell openShell(long sessionId) {
+		try {
+			// kubectl exec -it lab -n lab-<id> -- sh -c '...' 와 같다. TTY에서는 stderr가 stdout으로 합쳐진다
+			Process process = new Exec(client.get())
+				.newExecutionBuilder(namespace(sessionId), POD_NAME,
+						new String[] { "sh", "-c", "cd /app && export TERM=xterm-256color && exec sh" })
+				.setStdin(true)
+				.setStdout(true)
+				.setStderr(false)
+				.setTty(true)
+				.execute();
+			return new KubernetesShell((Exec.ExecProcess) process);
+		}
+		catch (ApiException ex) {
+			throw new LabClusterException(ex);
+		}
+		catch (IOException ex) {
+			throw new UncheckedIOException("터미널 연결 실패", ex);
 		}
 	}
 

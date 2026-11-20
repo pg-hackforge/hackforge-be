@@ -34,6 +34,9 @@ public interface LabCluster {
 	/** {@link #targetPort}로 연 포트와 그 연결을 닫는다. 없으면 아무것도 하지 않는다 */
 	void closeTarget(long sessionId);
 
+	/** 실습 Pod에 exec(TTY)로 {@code /app}에서 {@code sh}를 띄운다(ADR 022). 연결하지 못하면 {@link LabClusterException} */
+	LabShell openShell(long sessionId);
+
 	void deletePod(long sessionId);
 
 	/** 삭제를 요청만 하고 기다리지 않는다. 끝났는지는 {@link #namespaceExists}로 확인한다. */

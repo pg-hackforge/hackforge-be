@@ -107,6 +107,14 @@ class KubernetesLabClusterTests {
 			assertThat(page.statusCode()).isEqualTo(200);
 		}
 		labCluster.closeTarget(SESSION);
+
+		// ADR 022. exec(TTY)로 /app의 sh에 붙는다. 15초 동안 입출력이 없어도 연결이 끊기지 않는다
+		try (LabShell shell = labCluster.openShell(SESSION)) {
+			shell.resize(120, 30);
+			assertThat(runInShell(shell, "echo \"$(pwd) $(stty size) hf-$((40+2))\"")).contains("/app 30 120 hf-42");
+			Thread.sleep(15_000);
+			assertThat(runInShell(shell, "tty")).contains("/dev/pts/");
+		}
 		assertThatThrownBy(() -> http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/")).build(),
 				HttpResponse.BodyHandlers.ofString())).isInstanceOf(java.io.IOException.class);
 
@@ -187,6 +195,25 @@ class KubernetesLabClusterTests {
 			.spec(KubernetesLabCluster.podSpec().containers(List.of(new V1Container().name("c")
 				.image("busybox:1.37")
 				.securityContext(new V1SecurityContext().privileged(true)))));
+	}
+
+	/** 명령을 입력하고 끝 표시가 나올 때까지 출력을 읽는다 */
+	private static String runInShell(LabShell shell, String command) throws IOException {
+		String marker = "END" + System.nanoTime();
+		shell.input().write((command + "; echo " + marker + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		shell.input().flush();
+		StringBuilder out = new StringBuilder();
+		byte[] buffer = new byte[4096];
+		Instant deadline = Instant.now().plusSeconds(20);
+		// 입력 자체도 TTY가 다시 보여 주므로 표시가 두 번 나올 때까지 읽는다
+		while (out.indexOf(marker) == out.lastIndexOf(marker) && Instant.now().isBefore(deadline)) {
+			int n = shell.output().read(buffer);
+			if (n < 0) {
+				break;
+			}
+			out.append(new String(buffer, 0, n, java.nio.charset.StandardCharsets.UTF_8));
+		}
+		return out.toString();
 	}
 
 	private static void waitUntil(Duration timeout, BooleanSupplier condition) {
