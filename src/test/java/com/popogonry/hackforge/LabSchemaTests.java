@@ -55,6 +55,52 @@ class LabSchemaTests {
 		return jdbcTemplate.queryForObject("select count(*) from lab_sessions", Long.class);
 	}
 
+	long sessionId() {
+		return jdbcTemplate.queryForObject("select id from lab_sessions", Long.class);
+	}
+
+	/** ADR 023. 세션마다 실행 중 검증은 하나. 끝난 검증은 여러 개 */
+	@Test
+	void onlyOneRunningVerificationPerSession() {
+		insertSession("READY");
+		long id = sessionId();
+		String insert = "insert into verifications (session_id, type, status, started_at) values (?, ?, ?, now())";
+		jdbcTemplate.update(insert, id, "ATTACK", "PASS");
+		jdbcTemplate.update(insert, id, "ATTACK", "FAIL");
+		jdbcTemplate.update(insert, id, "ATTACK", "RUNNING");
+
+		assertThatThrownBy(() -> jdbcTemplate.update(insert, id, "DEFENSE", "RUNNING"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> jdbcTemplate.update(insert, id, "ATTACK", "DONE"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	/** 같은 힌트는 한 번만 공개 기록. 세션을 지우면 검증과 힌트 기록도 지워진다 */
+	@Test
+	void hintRevealIsUniqueAndCascades() {
+		insertSession("READY");
+		long id = sessionId();
+		String reveal = "insert into lab_session_hints (session_id, stage, position, revealed_at) values (?, 'ATTACK', ?, now())";
+		jdbcTemplate.update(reveal, id, 1);
+		assertThatThrownBy(() -> jdbcTemplate.update(reveal, id, 1)).isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> jdbcTemplate.update(reveal, id, 4)).isInstanceOf(DataIntegrityViolationException.class);
+		jdbcTemplate.update(
+				"insert into verifications (session_id, type, status, started_at) values (?, 'ATTACK', 'PASS', now())", id);
+
+		jdbcTemplate.update("delete from lab_sessions");
+
+		assertThat(jdbcTemplate.queryForObject("select count(*) from lab_session_hints", Long.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("select count(*) from verifications", Long.class)).isZero();
+	}
+
+	@Test
+	void stageStartsAtAttackAndRejectsUnknown() {
+		insertSession("READY");
+		assertThat(jdbcTemplate.queryForObject("select stage from lab_sessions", String.class)).isEqualTo("ATTACK");
+		assertThatThrownBy(() -> jdbcTemplate.update("update lab_sessions set stage = 'DONE'"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
 	/** ADR 021 */
 	@Test
 	void unknownPrepStepIsRejected() {

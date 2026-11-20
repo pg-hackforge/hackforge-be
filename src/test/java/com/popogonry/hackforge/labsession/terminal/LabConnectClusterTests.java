@@ -138,6 +138,8 @@ class LabConnectClusterTests {
 	void targetPageTerminalAndEndOnRealPod() throws Exception {
 		TestBrowser kim = TestBrowser.login(port, jdbcTemplate, passwordEncoder, "kim");
 		long challengeId = TestChallenges.insert(jdbcTemplate, "test-web", "테스트", TEST_IMAGE);
+		jdbcTemplate.update("update challenges set attack_check = 'test -f /tmp/hf-attacked && echo attacked' where id = ?",
+				challengeId);
 		id = jdbcTemplate.queryForObject("""
 				insert into lab_sessions (user_id, challenge_id, image, status, prep_step, status_changed_at, created_at)
 				select id, ?, ?, 'CREATING', 'SPACE', ?, ? from users where nickname = 'kim' returning id
@@ -172,11 +174,31 @@ class LabConnectClusterTests {
 		}
 		assertThat(client.output()).contains("/app hf-42");
 
+		// 공격 검증(ADR 023): 테스트용 스크립트는 파일이 있으면 PASS. 공격 전 FAIL, 터미널로 파일을 만든 뒤 PASS와 방어 단계
+		assertThat(verify(kim)).isEqualTo("FAIL");
+		socket.sendMessage(new BinaryMessage("touch /tmp/hf-attacked\r".getBytes(StandardCharsets.UTF_8)));
+		Thread.sleep(1000);
+		assertThat(verify(kim)).isEqualTo("PASS");
+		assertThat(kim.platform("GET", "/api/labs/" + id, null).body()).contains("\"stage\":\"DEFENSE\"");
+
 		// 실습을 끝내면 열린 터미널이 이유와 함께 닫힌다
 		assertThat(kim.platform("DELETE", "/api/labs/" + id, null).statusCode()).isEqualTo(202);
 		labReconciler.reconcileAll();
 		terminalHandler.closeEndedTerminals();
 		assertThat(client.closed.get(20, TimeUnit.SECONDS)).isEqualTo(new CloseStatus(4410, "LAB_ENDED"));
+	}
+
+	/** 공격 검증을 요청하고 RUNNING이 끝날 때까지 polling해 결과 상태를 반환한다 */
+	private String verify(TestBrowser browser) throws Exception {
+		String requested = browser.platform("POST", "/api/labs/" + id + "/attack-verifications", null).body();
+		String verificationId = requested.replaceAll(".*\"id\":(\\d+).*", "$1");
+		Instant deadline = Instant.now().plusSeconds(90);
+		String body = requested;
+		while (body.contains("\"RUNNING\"") && Instant.now().isBefore(deadline)) {
+			Thread.sleep(1000);
+			body = browser.platform("GET", "/api/labs/" + id + "/verifications/" + verificationId, null).body();
+		}
+		return body.replaceAll(".*\"status\":\"([A-Z]+)\".*", "$1");
 	}
 
 	private String status() {

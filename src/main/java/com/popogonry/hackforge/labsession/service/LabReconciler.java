@@ -17,7 +17,9 @@ import com.popogonry.hackforge.labsession.domain.LabEndReason;
 import com.popogonry.hackforge.labsession.domain.LabPrepStep;
 import com.popogonry.hackforge.labsession.domain.LabSession;
 import com.popogonry.hackforge.labsession.domain.LabStatus;
+import com.popogonry.hackforge.labsession.domain.VerificationStatus;
 import com.popogonry.hackforge.labsession.repository.LabSessionRepository;
+import com.popogonry.hackforge.labsession.repository.VerificationRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +36,11 @@ public class LabReconciler {
 	/** 생성 실패 후 다시 만드는 횟수 */
 	private static final int MAX_RETRIES = 1;
 
+	/** 이보다 오래 RUNNING인 검증은 결과를 잃은 것으로 본다. 스크립트 제한 시간 60초보다 넉넉하게 */
+	private static final java.time.Duration STALE_VERIFICATION = java.time.Duration.ofMinutes(2);
+
+	static final String STALE_VERIFICATION_MESSAGE = "서버가 다시 시작돼 결과를 잃었어요. 다시 시도해 주세요";
+
 	private final LabSessionRepository labSessionRepository;
 
 	private final LabCluster labCluster;
@@ -42,11 +49,14 @@ public class LabReconciler {
 
 	private final ActivityTracker activityTracker;
 
+	private final VerificationRepository verificationRepository;
+
 	private final Clock clock;
 
 	private final TransactionTemplate transactionTemplate;
 
 	public void reconcileAll() {
+		failStaleVerifications();
 		for (long id : labSessionRepository.findIdsByStatusNotIn(LabStatus.ENDED)) {
 			try {
 				transactionTemplate.executeWithoutResult(tx -> reconcile(id));
@@ -58,6 +68,16 @@ public class LabReconciler {
 			catch (RuntimeException e) {
 				log.warn("실습 세션 {} 처리 실패. 다음 주기에 다시 시도", id, e);
 			}
+		}
+	}
+
+	/** 백엔드 재시작으로 결과를 잃은 검증(2분이 지난 RUNNING)을 ERROR로 끝낸다(ADR 023) */
+	private void failStaleVerifications() {
+		Instant now = clock.instant();
+		int failed = transactionTemplate.execute(tx -> verificationRepository.failStale(VerificationStatus.RUNNING,
+				VerificationStatus.ERROR, STALE_VERIFICATION_MESSAGE, now.minus(STALE_VERIFICATION), now));
+		if (failed > 0) {
+			log.info("결과를 잃은 검증 {}개를 ERROR로 바꿈", failed);
 		}
 	}
 

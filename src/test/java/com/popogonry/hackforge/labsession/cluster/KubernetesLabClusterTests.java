@@ -115,6 +115,20 @@ class KubernetesLabClusterTests {
 			Thread.sleep(15_000);
 			assertThat(runInShell(shell, "tty")).contains("/dev/pts/");
 		}
+
+		// ADR 014, ADR 023. 검증 스크립트는 /app에서 sh로 돌고 exit code와 stdout을 준다. 제한 시간을 넘기면 끝낸다
+		ScriptResult before = labCluster.runScript(SESSION, "pwd\ntest -f /tmp/hf-attacked", Duration.ofSeconds(60));
+		assertThat(before.exitCode()).isEqualTo(1);
+		assertThat(before.output()).contains("/app");
+		assertThat(labCluster.runScript(SESSION, "touch /tmp/hf-attacked", Duration.ofSeconds(60)).exitCode()).isZero();
+		ScriptResult after = labCluster.runScript(SESSION, "test -f /tmp/hf-attacked && echo attacked", Duration.ofSeconds(60));
+		assertThat(after.exitCode()).isZero();
+		assertThat(after.output()).contains("attacked");
+		assertThat(after.timedOut()).isFalse();
+		Instant start = Instant.now();
+		ScriptResult slow = labCluster.runScript(SESSION, "sleep 30", Duration.ofSeconds(2));
+		assertThat(slow.timedOut()).isTrue();
+		assertThat(Duration.between(start, Instant.now())).isLessThan(Duration.ofSeconds(15));
 		assertThatThrownBy(() -> http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/")).build(),
 				HttpResponse.BodyHandlers.ofString())).isInstanceOf(java.io.IOException.class);
 

@@ -1,5 +1,7 @@
 package com.popogonry.hackforge.labsession.controller;
 
+import java.util.List;
+
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
@@ -17,10 +19,14 @@ import org.springframework.web.bind.annotation.RestController;
 import com.popogonry.hackforge.labsession.cluster.LabProperties;
 import com.popogonry.hackforge.labsession.domain.LabSession;
 import com.popogonry.hackforge.labsession.domain.LabStatus;
+import com.popogonry.hackforge.labsession.dto.HintResponse;
+import com.popogonry.hackforge.labsession.dto.LabHintsResponse;
 import com.popogonry.hackforge.labsession.dto.LabSessionResponse;
+import com.popogonry.hackforge.labsession.dto.VerificationResponse;
 import com.popogonry.hackforge.labsession.dto.StartLabRequest;
 import com.popogonry.hackforge.labsession.service.ActivityTracker;
 import com.popogonry.hackforge.labsession.service.LabSessionService;
+import com.popogonry.hackforge.labsession.service.VerificationService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -33,6 +39,8 @@ class LabSessionController {
 	private final LabProperties labProperties;
 
 	private final ActivityTracker activityTracker;
+
+	private final VerificationService verificationService;
 
 	/** 요청마다 다른 객체가 주입되는 request scope proxy. 공격 대상 주소의 호스트를 읽는다 */
 	private final HttpServletRequest request;
@@ -69,9 +77,45 @@ class LabSessionController {
 		return response(labSessionService.recordLabActivity(id, userId(authentication)));
 	}
 
+	/** 접수만 하고 바로 응답한다. 결과는 getVerification으로 polling한다(ADR 023) */
+	@PostMapping("/api/labs/{id}/attack-verifications")
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	VerificationResponse requestAttackVerification(@PathVariable long id, Authentication authentication) {
+		return VerificationResponse.from(verificationService.requestAttackVerification(id, userId(authentication)));
+	}
+
+	@GetMapping("/api/labs/{id}/verifications")
+	List<VerificationResponse> listVerifications(@PathVariable long id, Authentication authentication) {
+		return verificationService.listVerifications(id, userId(authentication))
+			.stream()
+			.map(VerificationResponse::from)
+			.toList();
+	}
+
+	@GetMapping("/api/labs/{id}/verifications/{verificationId}")
+	VerificationResponse getVerification(@PathVariable long id, @PathVariable long verificationId,
+			Authentication authentication) {
+		return VerificationResponse.from(verificationService.getVerification(id, verificationId, userId(authentication)));
+	}
+
+	@PostMapping("/api/labs/{id}/attack-hints")
+	HintResponse revealAttackHint(@PathVariable long id, Authentication authentication) {
+		return labSessionService.revealAttackHint(id, userId(authentication));
+	}
+
+	@GetMapping("/api/labs/{id}/hints")
+	LabHintsResponse listLabHints(@PathVariable long id, Authentication authentication) {
+		return labSessionService.listLabHints(id, userId(authentication));
+	}
+
+	@PostMapping("/api/labs/{id}/attack-skip")
+	LabSessionResponse skipAttack(@PathVariable long id, Authentication authentication) {
+		return response(labSessionService.skipAttack(id, userId(authentication)));
+	}
+
 	private LabSessionResponse response(LabSession session) {
 		return LabSessionResponse.from(session, labProperties, activityTracker.latest(session.getId()).orElse(null),
-				targetUrl(session));
+				targetUrl(session), labSessionService.countAttackHintsRevealed(session.getId()));
 	}
 
 	/**

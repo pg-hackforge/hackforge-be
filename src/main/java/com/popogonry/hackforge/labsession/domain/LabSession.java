@@ -45,6 +45,13 @@ public class LabSession {
 	@Enumerated(EnumType.STRING)
 	private LabEndReason endReason;
 
+	/** 학습 단계(ADR 023). 바꾸는 곳은 {@code LabSessionRepository}의 조건부 update뿐이다 */
+	@Enumerated(EnumType.STRING)
+	private LabStage stage;
+
+	/** 공격을 건너뛰고 방어 단계로 왔는지(ADR 023) */
+	private boolean attackSkipped;
+
 	/** 준비 단계(ADR 021). {@code CREATING}, {@code INITIALIZING}에서만 값이 있다 */
 	@Enumerated(EnumType.STRING)
 	private LabPrepStep prepStep;
@@ -71,6 +78,7 @@ public class LabSession {
 		this.challenge = challenge;
 		this.image = challenge.getImage();
 		this.status = LabStatus.CREATING;
+		this.stage = LabStage.ATTACK;
 		this.prepStep = LabPrepStep.SPACE;
 		this.statusChangedAt = now;
 		this.createdAt = now;

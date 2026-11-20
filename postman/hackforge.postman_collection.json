@@ -1747,7 +1747,7 @@
     },
     {
       "name": "9. 실습",
-      "description": "시작 요청은 세션 행만 만들고 202로 바로 응답한다. reconciler가 3초마다 namespace와 Pod를 만들고 상태를 CREATING → INITIALIZING → READY로 바꾼다(ADR 012). READY가 되면 targetUrl(공격 대상 포트, 개발 8081)로 공격 대상 페이지를 연다(ADR 022). 준비 중에는 prepStep이 SPACE → CONTAINER → LOADING → STARTING 순서로 바뀌고 READY에서 null이 된다(ADR 021). 개발 VM에서 sqli-login은 READY까지 약 70초.\n준비: bootRun 전에 환경 변수 HACKFORGE_LAB_KUBECONFIG에 백엔드 kubeconfig 경로를 넣는다(hackforge-be CLAUDE.md). 문제 이미지가 노드에 import돼 있어야 한다.\n'상태 조회'와 '종료 확인'은 손으로 보낼 때는 원하는 상태가 될 때까지 다시 누르고, Runner에서는 3초 간격으로 알아서 반복한다.\nREADY가 된 뒤 공격과 방어는 관리자 kubectl로 Pod 안에서 한다. 학습자용 API는 #8(공격 대상 화면과 웹 터미널), #9(공격 검증), #11(방어 검증)에서 만든다.",
+      "description": "시작 요청은 세션 행만 만들고 202로 바로 응답한다. reconciler가 3초마다 namespace와 Pod를 만들고 상태를 CREATING → INITIALIZING → READY로 바꾼다(ADR 012). READY가 되면 targetUrl(공격 대상 포트, 개발 8081)로 공격 대상 페이지를 연다(ADR 022). 공격 힌트 공개와 공격 검증(비동기, 결과는 polling)도 해 본다(ADR 023). 공격하지 않았으니 결과는 FAIL이다. 준비 중에는 prepStep이 SPACE → CONTAINER → LOADING → STARTING 순서로 바뀌고 READY에서 null이 된다(ADR 021). 개발 VM에서 sqli-login은 READY까지 약 70초.\n준비: bootRun 전에 환경 변수 HACKFORGE_LAB_KUBECONFIG에 백엔드 kubeconfig 경로를 넣는다(hackforge-be CLAUDE.md). 문제 이미지가 노드에 import돼 있어야 한다.\n'상태 조회'와 '종료 확인'은 손으로 보낼 때는 원하는 상태가 될 때까지 다시 누르고, Runner에서는 3초 간격으로 알아서 반복한다.\nREADY가 된 뒤 공격과 방어는 관리자 kubectl로 Pod 안에서 한다. 학습자용 API는 #8(공격 대상 화면과 웹 터미널), #9(공격 검증), #11(방어 검증)에서 만든다.",
       "item": [
         {
           "name": "학습자 로그인 (승인됨)",
@@ -2013,6 +2013,159 @@
             "header": [],
             "url": "{{targetUrl}}",
             "description": "공격 대상 포트로 보내면 백엔드가 로그인한 학습자의 READY 세션 Pod 안 공격 대상 웹(127.0.0.1:8080)으로 넘긴다(ADR 022). 로그인은 SESSION cookie로 확인하고, 공격 대상 앱으로는 플랫폼 cookie를 넘기지 않는다."
+          }
+        },
+        {
+          "name": "공격 힌트 공개 (1번)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.position = 1, .stage = ATTACK', () => { pm.expect(pm.response.json().position).to.eql(1); pm.expect(pm.response.json().stage).to.eql('ATTACK'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/attack-hints",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "attack-hints"
+              ]
+            },
+            "description": "공격 힌트를 1 → 2 → 3 순서로 하나 공개하고 공개 시각을 남긴다(ADR 023). READY이고 ATTACK 단계일 때만 된다."
+          }
+        },
+        {
+          "name": "공격 검증 요청",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.test('.status = RUNNING', () => pm.expect(pm.response.json().status).to.eql('RUNNING'));",
+                  "pm.collectionVariables.set('verificationId', pm.response.json().id);",
+                  "pm.collectionVariables.set('pollCount', 0);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/attack-verifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "attack-verifications"
+              ]
+            },
+            "description": "접수만 하고 바로 응답한다. 백엔드가 Pod 안에서 문제의 attack-check.sh를 실행한다(ADR 023). 공격하지 않았으면 결과는 FAIL이다."
+          }
+        },
+        {
+          "name": "공격 검증 결과 (끝날 때까지)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Runner는 반복할 때마다 1초 쉰다",
+                  "if (pm.collectionVariables.get('pollCount')) {",
+                  "  setTimeout(() => {}, 1000);",
+                  "}",
+                  "const v = pm.response.json();",
+                  "const n = (pm.collectionVariables.get('pollCount') || 0) + 1;",
+                  "if (v.status === 'RUNNING' && n < 90) {",
+                  "  pm.collectionVariables.set('pollCount', n);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.collectionVariables.set('pollCount', 0);",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('결과: ' + v.status + ' - ' + v.message, () => pm.expect(['PASS', 'FAIL']).to.include(v.status));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/verifications/{{verificationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "verifications",
+                "{{verificationId}}"
+              ]
+            },
+            "description": "손으로 보낼 때는 RUNNING이 끝날 때까지 다시 누르고, Runner에서는 1초 간격으로 알아서 반복한다."
+          }
+        },
+        {
+          "name": "검증 기록",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('최근 순 목록', () => pm.expect(pm.response.json()).to.be.an('array').that.is.not.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/verifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "verifications"
+              ]
+            },
+            "description": "이 세션의 공격·방어 검증을 최근 순으로 준다."
           }
         },
         {
