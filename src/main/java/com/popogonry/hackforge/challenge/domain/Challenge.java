@@ -36,6 +36,9 @@ public class Challenge {
 	/** 문제 목록에 보이는 설명(Markdown) */
 	private String description;
 
+	/** 공격 검증 스크립트 본문(ADR 014). 실습 Pod 안에서 실행한다(ADR 023) */
+	private String attackCheck;
+
 	private Instant createdAt;
 
 }

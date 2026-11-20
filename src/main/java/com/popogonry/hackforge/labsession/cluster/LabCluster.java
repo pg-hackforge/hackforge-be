@@ -37,6 +37,12 @@ public interface LabCluster {
 	/** 실습 Pod에 exec(TTY)로 {@code /app}에서 {@code sh}를 띄운다(ADR 022). 연결하지 못하면 {@link LabClusterException} */
 	LabShell openShell(long sessionId);
 
+	/**
+	 * 검증 스크립트 본문을 실습 Pod에 exec(TTY 없음)로 넘겨 {@code /app}에서 {@code sh}로 실행한다(ADR 014, ADR 023).
+	 * 제한 시간을 넘기면 끝내고 {@code timedOut}을 표시한다. 실행하지 못하면 {@link LabClusterException}
+	 */
+	ScriptResult runScript(long sessionId, String script, java.time.Duration timeout);
+
 	void deletePod(long sessionId);
 
 	/** 삭제를 요청만 하고 기다리지 않는다. 끝났는지는 {@link #namespaceExists}로 확인한다. */

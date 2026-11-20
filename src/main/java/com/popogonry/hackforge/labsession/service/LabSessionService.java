@@ -1,6 +1,7 @@
 package com.popogonry.hackforge.labsession.service;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Set;
 import java.util.Optional;
 
@@ -13,6 +14,10 @@ import com.popogonry.hackforge.challenge.repository.ChallengeRepository;
 import com.popogonry.hackforge.labsession.cluster.LabProperties;
 import com.popogonry.hackforge.labsession.domain.LabEndReason;
 import com.popogonry.hackforge.labsession.domain.LabSession;
+import com.popogonry.hackforge.labsession.domain.LabStage;
+import com.popogonry.hackforge.labsession.dto.HintResponse;
+import com.popogonry.hackforge.labsession.dto.LabHintsResponse;
+import com.popogonry.hackforge.labsession.repository.LabHintRepository;
 import com.popogonry.hackforge.labsession.domain.LabStatus;
 import com.popogonry.hackforge.labsession.repository.LabSessionRepository;
 import com.popogonry.hackforge.user.domain.User;
@@ -43,6 +48,10 @@ public class LabSessionService {
 	private final LabProperties labProperties;
 
 	private final Clock clock;
+
+	private final LabHintRepository labHintRepository;
+
+	private final ActivityTracker activityTracker;
 
 	/**
 	 * 승인 상태는 로그인 세션이 아니라 DB에서 읽는다(ADR 011). 정원과 학습자당 1세션은 advisory lock을 잡고 센다.
@@ -92,6 +101,59 @@ public class LabSessionService {
 			throw new ApiException(ErrorCode.LAB_NOT_READY);
 		}
 		return session;
+	}
+
+	/** 다음 공격 힌트 하나를 공개하고 공개 시각을 남긴다(ADR 023). {@code READY}이고 공격 단계일 때만 */
+	@Transactional
+	public HintResponse revealAttackHint(long id, long userId) {
+		LabSession lab = getLab(id, userId);
+		labSessionRepository.lockById(id);
+		requireReady(lab);
+		if (lab.getStage() != LabStage.ATTACK) {
+			throw new ApiException(ErrorCode.WRONG_LAB_STAGE);
+		}
+		long challengeId = lab.getChallenge().getId();
+		int revealed = labHintRepository.countRevealed(id, LabStage.ATTACK);
+		if (revealed >= labHintRepository.countHints(challengeId, LabStage.ATTACK)) {
+			throw new ApiException(ErrorCode.NO_MORE_HINTS);
+		}
+		int position = revealed + 1;
+		Instant now = clock.instant();
+		labHintRepository.reveal(id, LabStage.ATTACK, position, now);
+		activityTracker.record(id);
+		return new HintResponse(LabStage.ATTACK, position,
+				labHintRepository.content(challengeId, LabStage.ATTACK, position), now);
+	}
+
+	/** 공개한 힌트는 단계와 상관없이 다시 볼 수 있다 */
+	public LabHintsResponse listLabHints(long id, long userId) {
+		LabSession lab = getLab(id, userId);
+		long challengeId = lab.getChallenge().getId();
+		return new LabHintsResponse(labHintRepository.countHints(challengeId, LabStage.ATTACK),
+				labHintRepository.countHints(challengeId, LabStage.DEFENSE), labHintRepository.findRevealed(id, challengeId));
+	}
+
+	public int countAttackHintsRevealed(long id) {
+		return labHintRepository.countRevealed(id, LabStage.ATTACK);
+	}
+
+	/** 공격 단계에서는 힌트를 몇 개 봤든 건너뛸 수 있다(ADR 023) */
+	@Transactional
+	public LabSession skipAttack(long id, long userId) {
+		LabSession lab = getLab(id, userId);
+		requireReady(lab);
+		int updated = labSessionRepository.skipAttack(id, userId, LabStatus.READY, LabStage.ATTACK, LabStage.DEFENSE);
+		if (updated == 0) {
+			throw new ApiException(ErrorCode.WRONG_LAB_STAGE);
+		}
+		activityTracker.record(id);
+		return getLab(id, userId);
+	}
+
+	private static void requireReady(LabSession lab) {
+		if (lab.getStatus() != LabStatus.READY) {
+			throw new ApiException(ErrorCode.LAB_NOT_READY);
+		}
 	}
 
 	/** 남의 세션도 없는 세션과 같은 404. 존재 여부를 노출하지 않는다 */

@@ -385,6 +385,37 @@ class LabReconcilerTests {
 		assertThat(activityTracker.latest(id)).isEmpty();
 	}
 
+	long runningVerification(long sessionId, Duration ago) {
+		return jdbcTemplate.queryForObject(
+				"insert into verifications (session_id, type, status, started_at) values (?, 'ATTACK', 'RUNNING', ?) returning id",
+				Long.class, sessionId, Timestamp.from(now.instant().minus(ago)));
+	}
+
+	/** ADR 023. 실행 중 백엔드가 재시작해 2분이 지나도 RUNNING인 검증은 ERROR로 바꾼다 */
+	@Test
+	void staleRunningVerificationBecomesError() {
+		long id = readySession();
+		long stale = runningVerification(id, Duration.ofMinutes(3));
+
+		labReconciler.reconcileAll();
+
+		Map<String, Object> row = jdbcTemplate.queryForMap("select * from verifications where id = ?", stale);
+		assertThat(row.get("status")).isEqualTo("ERROR");
+		assertThat(row.get("message")).isEqualTo("서버가 다시 시작돼 결과를 잃었어요. 다시 시도해 주세요");
+		assertThat(row.get("finished_at")).isNotNull();
+	}
+
+	@Test
+	void recentRunningVerificationIsKept() {
+		long id = readySession();
+		long running = runningVerification(id, Duration.ofSeconds(30));
+
+		labReconciler.reconcileAll();
+
+		assertThat(jdbcTemplate.queryForObject("select status from verifications where id = ?", String.class, running))
+			.isEqualTo("RUNNING");
+	}
+
 	/** idle 시간은 READY부터 센다. 생성에 걸린 시간은 들어가지 않는다 */
 	@Test
 	void creationTimeIsNotCountedAsIdle() {

@@ -20,6 +20,16 @@ public final class TestChallenges {
 				""", Long.class, slug, title, image, title + " 설명", title + " 요약");
 	}
 
+	/** 공격 힌트 3개, 방어 힌트 3개. 내용은 "공격 힌트 1"처럼 단계와 순서 */
+	public static void insertHints(JdbcTemplate jdbcTemplate, long challengeId) {
+		for (String stage : new String[] { "ATTACK", "DEFENSE" }) {
+			for (int position = 1; position <= 3; position++) {
+				jdbcTemplate.update("insert into challenge_hints (challenge_id, stage, position, content) values (?, ?, ?, ?)",
+						challengeId, stage, position, (stage.equals("ATTACK") ? "공격" : "방어") + " 힌트 " + position);
+			}
+		}
+	}
+
 	/** 목록 테스트용. createdAgo만큼 전에 처음 등록한 문제 */
 	public static long insertListed(JdbcTemplate jdbcTemplate, String slug, String title, String summary, String category,
 			String difficulty, int minutes, Duration createdAgo) {

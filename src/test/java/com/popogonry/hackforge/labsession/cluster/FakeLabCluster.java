@@ -34,6 +34,9 @@ public class FakeLabCluster implements LabCluster {
 
 	private volatile boolean shellFailure;
 
+	/** 스크립트 실행 흉내. 기본은 exit 1, 출력 없음 */
+	private volatile java.util.function.BiFunction<Long, String, ScriptResult> scriptRunner = (id, script) -> new ScriptResult(1, "", false);
+
 	private Runnable onCreatePod = () -> {
 	};
 
@@ -99,6 +102,22 @@ public class FakeLabCluster implements LabCluster {
 		FakeShell shell = new FakeShell();
 		shells.computeIfAbsent(sessionId, id -> new java.util.concurrent.CopyOnWriteArrayList<>()).add(shell);
 		return shell;
+	}
+
+	@Override
+	public ScriptResult runScript(long sessionId, String script, java.time.Duration timeout) {
+		throwIfFailing(sessionId);
+		return scriptRunner.apply(sessionId, script);
+	}
+
+	/** 스크립트 실행 결과를 정한다. 예외를 던지면 실행 실패 */
+	public void onRunScript(java.util.function.BiFunction<Long, String, ScriptResult> runner) {
+		this.scriptRunner = runner;
+	}
+
+	/** 실행 실패(Pod 연결 실패 등)를 흉내 낼 때 던질 예외 */
+	public static LabClusterException execFailure() {
+		return new LabClusterException(new ApiException(500, "exec 실패"));
 	}
 
 	/** 이 세션에 연 셸들. 연 순서대로 */
@@ -194,6 +213,7 @@ public class FakeLabCluster implements LabCluster {
 		closedTargets.clear();
 		shells.clear();
 		shellFailure = false;
+		scriptRunner = (id, script) -> new ScriptResult(1, "", false);
 		onCreatePod = () -> {
 		};
 	}

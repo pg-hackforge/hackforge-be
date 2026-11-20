@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import com.popogonry.hackforge.labsession.domain.LabEndReason;
+import com.popogonry.hackforge.labsession.domain.LabStage;
 import com.popogonry.hackforge.labsession.domain.LabSession;
 import com.popogonry.hackforge.labsession.domain.LabStatus;
 
@@ -53,6 +54,26 @@ public interface LabSessionRepository extends JpaRepository<LabSession, Long> {
 			where s.id = :id and s.status = :ready and s.lastActivityAt < :at
 			""")
 	int writeActivity(long id, Instant at, LabStatus ready);
+
+	/** 공격 단계일 때만 방어 단계로 넘긴다(공격 검증 PASS, ADR 023). version을 올리는 이유는 {@link #terminate}와 같다 */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("""
+			update LabSession s set s.stage = :defense, s.version = s.version + 1
+			where s.id = :id and s.stage = :attack
+			""")
+	int enterDefense(long id, LabStage attack, LabStage defense);
+
+	/** {@code READY}이고 공격 단계일 때만 건너뛴다(ADR 023). 바뀐 행 수를 반환한다 */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("""
+			update LabSession s set s.stage = :defense, s.attackSkipped = true, s.version = s.version + 1
+			where s.id = :id and s.userId = :userId and s.status = :ready and s.stage = :attack
+			""")
+	int skipAttack(long id, long userId, LabStatus ready, LabStage attack, LabStage defense);
+
+	/** 힌트를 순서대로 공개하려고 세션 행을 잠근다. 같은 세션의 공개 요청이 줄을 선다 */
+	@Query(value = "select id from lab_sessions where id = :id for update", nativeQuery = true)
+	Long lockById(long id);
 
 	/** {@code READY}일 때만 마지막 활동 시각을 바꾼다. version을 올리는 이유는 {@link #terminate}와 같다. 바뀐 행 수를 반환한다 */
 	@Modifying

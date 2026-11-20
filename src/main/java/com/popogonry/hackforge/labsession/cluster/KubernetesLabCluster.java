@@ -1,6 +1,7 @@
 package com.popogonry.hackforge.labsession.cluster;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +73,9 @@ class KubernetesLabCluster implements LabCluster {
 
 	/** Pod 안 공격 대상 웹 포트. 모든 문제가 {@code 127.0.0.1:8080}이다(ADR 022, Challenge 형식 규칙) */
 	static final int TARGET_POD_PORT = 8080;
+
+	/** 검증 스크립트 출력은 끝부분만 이만큼 보관한다. 학습자에게는 마지막 줄만 보인다 */
+	static final int SCRIPT_OUTPUT_LIMIT = 64 * 1024;
 
 	/**
 	 * Pod 로그를 읽는 크기 상한. 준비 중 로그(dockerd 시작 로그와 단계 기록)는 수십 KB다.
@@ -335,6 +339,58 @@ class KubernetesLabCluster implements LabCluster {
 		}
 		catch (IOException ex) {
 			throw new UncheckedIOException("터미널 연결 실패", ex);
+		}
+	}
+
+	/**
+	 * kubectl exec -i lab -n lab-<id> -- sh -c 'cd /app && timeout <초> sh' < 스크립트 와 같다(ADR 014).
+	 * stdin을 닫은 것이 Pod까지 전해지는지는 exec 프로토콜 버전에 따라 달라서, 스크립트 끝에 {@code exit}를 붙여 sh가 입력을 더 기다리지 않게 한다.
+	 * 스크립트 안의 timeout이 먼저 끝내고, 그래도 끝나지 않으면 여기서 5초 더 기다린 뒤 끊는다
+	 */
+	@Override
+	public ScriptResult runScript(long sessionId, String script, java.time.Duration timeout) {
+		Process process;
+		try {
+			process = new Exec(client.get())
+				.newExecutionBuilder(namespace(sessionId), POD_NAME,
+						new String[] { "sh", "-c", "cd /app && timeout " + timeout.toSeconds() + " sh" })
+				.setStdin(true)
+				.setStdout(true)
+				.setStderr(true)
+				.setTty(false)
+				.execute();
+		}
+		catch (ApiException ex) {
+			throw new LabClusterException(ex);
+		}
+		catch (IOException ex) {
+			throw new UncheckedIOException("검증 스크립트 실행 실패", ex);
+		}
+		try {
+			TailBuffer stdout = new TailBuffer(SCRIPT_OUTPUT_LIMIT);
+			Thread outReader = Thread.ofVirtual().start(() -> stdout.readFrom(process.getInputStream()));
+			Thread.ofVirtual().start(() -> new TailBuffer(0).readFrom(process.getErrorStream()));
+			try (OutputStream stdin = process.getOutputStream()) {
+				stdin.write((script + "\nexit\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+				stdin.flush();
+			}
+			if (!process.waitFor(timeout.plusSeconds(5).toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)) {
+				return new ScriptResult(-1, stdout.text(), true);
+			}
+			outReader.join(2000);
+			int exitCode = process.exitValue();
+			// busybox timeout이 끝낸 경우(124 또는 TERM 신호 143)
+			return new ScriptResult(exitCode, stdout.text(), exitCode == 124 || exitCode == 143);
+		}
+		catch (IOException ex) {
+			throw new UncheckedIOException("검증 스크립트 실행 실패", ex);
+		}
+		catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException("검증 스크립트 실행이 중단됨", ex);
+		}
+		finally {
+			process.destroy();
 		}
 	}
 
