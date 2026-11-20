@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.5.0
+  version: 0.6.0
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -600,6 +600,177 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/labs/{id}/attack-verifications:
+    post:
+      tags: [lab]
+      summary: 공격 검증 요청
+      description: >-
+        공격 검증을 `RUNNING`으로 접수하고 바로 응답한다(hackforge-docs ADR 023). 서버가 응답 뒤 실습 Pod 안에서 문제의
+        `attack-check.sh`를 실행하고 결과를 저장한다. 클라이언트는 `GET /api/labs/{id}/verifications/{verificationId}`를
+        1초 간격으로 polling해 `RUNNING`이 끝나기를 기다린다.
+        `ATTACK`, `DEFENSE` 단계 모두 받고 횟수 제한은 없다. `ATTACK` 단계에서 `PASS`가 나오면 세션 단계가 `DEFENSE`로 바뀐다.
+        이 요청은 활동으로 집계한다
+      operationId: requestAttackVerification
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '202':
+          description: 접수됨(`RUNNING`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+        '404':
+          $ref: '#/components/responses/LabNotFound'
+        '409':
+          description: '`READY`가 아닌 세션(`LAB_NOT_READY`), 이 세션에 실행 중인 검증이 있음(`VERIFICATION_RUNNING`, 공격·방어 모두)'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/labs/{id}/verifications:
+    get:
+      tags: [lab]
+      summary: 검증 기록
+      description: 이 세션의 공격·방어 검증을 최근 순으로 반환한다. 끝난 세션도 조회 가능
+      operationId: listVerifications
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '200':
+          description: 검증 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VerificationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/LabNotFound'
+  /api/labs/{id}/verifications/{verificationId}:
+    get:
+      tags: [lab]
+      summary: 검증 하나
+      description: 검증 결과를 polling할 때 쓴다. polling은 활동으로 집계하지 않는다
+      operationId: getVerification
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+        - name: verificationId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 검증
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          description: 없는 세션이나 다른 사용자의 세션(`LAB_NOT_FOUND`), 그 세션에 없는 검증(`VERIFICATION_NOT_FOUND`)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/labs/{id}/attack-hints:
+    post:
+      tags: [lab]
+      summary: 다음 공격 힌트 공개
+      description: >-
+        공격 힌트를 1(방향) → 2(위치) → 3(공격 방법) 순서로 하나 공개하고 공개 시각을 기록한다(hackforge-docs ADR 023).
+        `READY`이고 `ATTACK` 단계일 때만 받는다. 이 요청은 활동으로 집계한다
+      operationId: revealAttackHint
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '200':
+          description: 이번에 공개한 힌트
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HintResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+        '404':
+          $ref: '#/components/responses/LabNotFound'
+        '409':
+          description: '`READY`가 아님(`LAB_NOT_READY`), `ATTACK` 단계가 아님(`WRONG_LAB_STAGE`), 다 공개함(`NO_MORE_HINTS`)'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/labs/{id}/hints:
+    get:
+      tags: [lab]
+      summary: 공개한 힌트
+      description: 이 세션에서 공개한 힌트(공격·방어)를 공개 순서로, 단계별 전체 개수와 함께 반환한다. 단계와 상관없이 조회 가능
+      operationId: listLabHints
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '200':
+          description: 공개한 힌트
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabHintsResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/LabNotFound'
+  /api/labs/{id}/attack-skip:
+    post:
+      tags: [lab]
+      summary: 공격 건너뛰기
+      description: >-
+        공격 단계에서 힌트를 몇 개 봤든 방어 단계로 넘어가고 `attackSkipped`를 기록한다(hackforge-docs ADR 023).
+        `READY`이고 `ATTACK` 단계일 때만 받는다. 이 요청은 활동으로 집계한다
+      operationId: skipAttack
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '200':
+          description: 방어 단계로 넘어간 세션
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabSessionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+        '404':
+          $ref: '#/components/responses/LabNotFound'
+        '409':
+          description: '`READY`가 아님(`LAB_NOT_READY`), `ATTACK` 단계가 아님(`WRONG_LAB_STAGE`)'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/labs/{id}/activity:
     post:
       tags: [lab]
@@ -966,6 +1137,76 @@ components:
       type: string
       description: '`USER` 학습자 종료, `IDLE` idle timeout, `POD_LOST` 실습 중 실습 환경 비정상 종료'
       enum: [USER, IDLE, POD_LOST]
+    LabStage:
+      type: string
+      description: '학습 단계(hackforge-docs ADR 023). `ATTACK`에서 시작하고 공격 검증 PASS나 건너뛰기로 `DEFENSE`가 되며 되돌아가지 않는다'
+      enum: [ATTACK, DEFENSE]
+    VerificationType:
+      type: string
+      enum: [ATTACK, DEFENSE]
+    VerificationStatus:
+      type: string
+      description: >-
+        `RUNNING` 실행 중,
+        `PASS` 스크립트가 0으로 끝남,
+        `FAIL` 0이 아닌 값으로 끝나거나 60초를 넘김,
+        `ERROR` 플랫폼이 스크립트를 실행하지 못함(다시 시도)
+      enum: [RUNNING, PASS, FAIL, ERROR]
+    VerificationResponse:
+      type: object
+      required: [id, type, status, message, durationMs, startedAt, finishedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          $ref: '#/components/schemas/VerificationType'
+        status:
+          $ref: '#/components/schemas/VerificationStatus'
+        message:
+          description: '스크립트 출력의 비어 있지 않은 마지막 줄(최대 500자). `RUNNING`이면 `null`'
+          type: [string, 'null']
+        durationMs:
+          description: '실행에 걸린 시간. `RUNNING`이면 `null`'
+          type: [integer, 'null']
+          format: int64
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: [string, 'null']
+          format: date-time
+    HintResponse:
+      type: object
+      required: [stage, position, content, revealedAt]
+      properties:
+        stage:
+          $ref: '#/components/schemas/LabStage'
+        position:
+          type: integer
+          minimum: 1
+          maximum: 3
+        content:
+          description: 힌트 본문(Markdown)
+          type: string
+        revealedAt:
+          type: string
+          format: date-time
+    LabHintsResponse:
+      type: object
+      required: [attackTotal, defenseTotal, hints]
+      properties:
+        attackTotal:
+          description: 이 문제의 공격 힌트 수
+          type: integer
+        defenseTotal:
+          description: 이 문제의 방어 힌트 수
+          type: integer
+        hints:
+          description: 공개한 힌트. 공개 순서
+          type: array
+          items:
+            $ref: '#/components/schemas/HintResponse'
     LabPrepStep:
       type: string
       description: >-
@@ -978,7 +1219,8 @@ components:
       enum: [SPACE, CONTAINER, LOADING, STARTING]
     LabSessionResponse:
       type: object
-      required: [id, challengeId, challengeTitle, status, prepStep, retrying, targetUrl, createdAt]
+      required: [id, challengeId, challengeTitle, status, prepStep, retrying, targetUrl, stage, attackSkipped,
+        attackHintsRevealed, createdAt]
       properties:
         id:
           type: integer
@@ -990,6 +1232,14 @@ components:
           type: string
         status:
           $ref: '#/components/schemas/LabStatus'
+        stage:
+          $ref: '#/components/schemas/LabStage'
+        attackSkipped:
+          description: 공격을 건너뛰고 방어 단계로 왔으면 `true`
+          type: boolean
+        attackHintsRevealed:
+          description: 공개한 공격 힌트 수(0~3). 내용은 `GET /api/labs/{id}/hints`
+          type: integer
         targetUrl:
           description: >-
             `READY`에서만 값이 있음. 공격 대상 화면을 iframe으로 열 주소. 이 요청의 호스트(`Host`, reverse proxy 뒤라면
@@ -1070,6 +1320,10 @@ components:
             - LAB_ALREADY_ACTIVE
             - LAB_NOT_READY
             - LAB_CAPACITY_FULL
+            - VERIFICATION_RUNNING
+            - VERIFICATION_NOT_FOUND
+            - WRONG_LAB_STAGE
+            - NO_MORE_HINTS
         errors:
           description: '`VALIDATION_FAILED`일 때 항목별 이유'
           type: array
