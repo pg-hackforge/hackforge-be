@@ -50,7 +50,7 @@ public class VerificationService {
 			verification = verificationRepository.saveAndFlush(new Verification(labId, VerificationType.ATTACK, clock.instant()));
 		}
 		catch (DataIntegrityViolationException e) {
-			throw new ApiException(ErrorCode.VERIFICATION_RUNNING);
+			throw new ApiException(ErrorCode.LAB_JOB_RUNNING);
 		}
 		activityTracker.record(labId);
 		long verificationId = verification.getId();
