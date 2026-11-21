@@ -2,8 +2,9 @@ package com.popogonry.hackforge.labsession.service;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Set;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -15,11 +16,15 @@ import com.popogonry.hackforge.labsession.cluster.LabProperties;
 import com.popogonry.hackforge.labsession.domain.LabEndReason;
 import com.popogonry.hackforge.labsession.domain.LabSession;
 import com.popogonry.hackforge.labsession.domain.LabStage;
+import com.popogonry.hackforge.labsession.domain.LabStatus;
+import com.popogonry.hackforge.labsession.domain.VerificationStatus;
+import com.popogonry.hackforge.labsession.domain.VerificationType;
 import com.popogonry.hackforge.labsession.dto.HintResponse;
 import com.popogonry.hackforge.labsession.dto.LabHintsResponse;
+import com.popogonry.hackforge.labsession.dto.SolutionResponse;
 import com.popogonry.hackforge.labsession.repository.LabHintRepository;
-import com.popogonry.hackforge.labsession.domain.LabStatus;
 import com.popogonry.hackforge.labsession.repository.LabSessionRepository;
+import com.popogonry.hackforge.labsession.repository.VerificationRepository;
 import com.popogonry.hackforge.user.domain.User;
 import com.popogonry.hackforge.user.domain.UserStatus;
 import com.popogonry.hackforge.user.service.UserService;
@@ -52,6 +57,8 @@ public class LabSessionService {
 	private final LabHintRepository labHintRepository;
 
 	private final ActivityTracker activityTracker;
+
+	private final VerificationRepository verificationRepository;
 
 	/**
 	 * 승인 상태는 로그인 세션이 아니라 DB에서 읽는다(ADR 011). 정원과 학습자당 1세션은 advisory lock을 잡고 센다.
@@ -107,6 +114,32 @@ public class LabSessionService {
 	@Transactional
 	public HintResponse revealAttackHint(long id, long userId) {
 		return revealHint(id, userId, LabStage.ATTACK);
+	}
+
+	/** 방어 검증 시도 횟수. PASS와 FAIL만 센다(ADR 025) */
+	public int countDefenseAttempts(long id) {
+		return (int) verificationRepository.countBySessionIdAndTypeAndStatusIn(id, VerificationType.DEFENSE,
+				List.of(VerificationStatus.PASS, VerificationStatus.FAIL));
+	}
+
+	/** 방어 검증 FAIL이 문제의 최대 시도 횟수만큼 쌓였으면 해답을 열 수 있다(ADR 025) */
+	public boolean isSolutionAvailable(LabSession lab) {
+		return verificationRepository.countBySessionIdAndTypeAndStatusIn(lab.getId(), VerificationType.DEFENSE,
+				List.of(VerificationStatus.FAIL)) >= lab.getChallenge().getMaxDefenseAttempts();
+	}
+
+	/** 해답을 주고 처음 연 시각을 남긴다(ADR 025). {@code READY}일 때만 */
+	@Transactional
+	public SolutionResponse openSolution(long id, long userId) {
+		LabSession lab = getLab(id, userId);
+		requireReady(lab);
+		if (!isSolutionAvailable(lab)) {
+			throw new ApiException(ErrorCode.SOLUTION_LOCKED);
+		}
+		String solution = lab.getChallenge().getSolution();
+		labSessionRepository.markSolutionViewed(id, clock.instant());
+		activityTracker.record(id);
+		return new SolutionResponse(solution, getLab(id, userId).getSolutionViewedAt());
 	}
 
 	/** 다음 방어 힌트 하나를 공개한다(ADR 024). {@code READY}이고 방어 단계일 때만 */

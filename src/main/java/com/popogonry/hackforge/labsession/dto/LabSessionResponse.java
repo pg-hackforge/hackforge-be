@@ -22,6 +22,11 @@ public record LabSessionResponse(
 		boolean attackSkipped,
 		int attackHintsRevealed,
 		int defenseHintsRevealed,
+		int defenseAttempts,
+		int maxDefenseAttempts,
+		boolean solutionAvailable,
+		Instant solutionViewedAt,
+		Instant completedAt,
 		LabEndReason endReason,
 		Instant createdAt,
 		Instant readyAt,
@@ -36,14 +41,18 @@ public record LabSessionResponse(
 	 * @param targetUrl 공격 대상 주소. {@code READY}가 아니면 null(ADR 022)
 	 * @param attackHintsRevealed 공개한 공격 힌트 수(ADR 023)
 	 * @param defenseHintsRevealed 공개한 방어 힌트 수(ADR 024)
+	 * @param defenseAttempts 방어 검증 시도 횟수, {@code solutionAvailable} 해답을 열 수 있는지(ADR 025)
 	 */
 	public static LabSessionResponse from(LabSession session, LabProperties labProperties, Instant recentActivity,
-			String targetUrl, int attackHintsRevealed, int defenseHintsRevealed) {
+			String targetUrl, int attackHintsRevealed, int defenseHintsRevealed, int defenseAttempts,
+			boolean solutionAvailable) {
 		Instant idleDeadline = session.idleDeadline(labProperties.idleTimeout(), recentActivity);
 		Instant idleWarningAt = idleDeadline == null ? null : idleDeadline.minus(labProperties.idleWarning());
 		return new LabSessionResponse(session.getId(), session.getChallenge().getId(),
 				session.getChallenge().getTitle(), session.getStatus(), session.getPrepStep(), session.isRetrying(), targetUrl,
-				session.getStage(), session.isAttackSkipped(), attackHintsRevealed, defenseHintsRevealed, session.getEndReason(),
+				session.getStage(), session.isAttackSkipped(), attackHintsRevealed, defenseHintsRevealed, defenseAttempts,
+				session.getChallenge().getMaxDefenseAttempts(), solutionAvailable, session.getSolutionViewedAt(),
+				session.getCompletedAt(), session.getEndReason(),
 				session.getCreatedAt(), session.getReadyAt(), session.getEndedAt(), idleDeadline, idleWarningAt);
 	}
 

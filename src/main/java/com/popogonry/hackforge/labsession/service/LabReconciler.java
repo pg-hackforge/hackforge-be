@@ -19,6 +19,7 @@ import com.popogonry.hackforge.labsession.domain.LabSession;
 import com.popogonry.hackforge.labsession.domain.LabStatus;
 import com.popogonry.hackforge.labsession.domain.RedeployStatus;
 import com.popogonry.hackforge.labsession.domain.VerificationStatus;
+import com.popogonry.hackforge.labsession.domain.VerificationType;
 import com.popogonry.hackforge.labsession.repository.LabSessionRepository;
 import com.popogonry.hackforge.labsession.repository.RedeployRepository;
 import com.popogonry.hackforge.labsession.repository.VerificationRepository;
@@ -42,6 +43,9 @@ public class LabReconciler {
 	private static final java.time.Duration STALE_VERIFICATION = java.time.Duration.ofMinutes(2);
 
 	static final String STALE_VERIFICATION_MESSAGE = LabJobRecovery.LOST_MESSAGE;
+
+	/** 방어 검증은 스크립트 두 개(각 60초)라 더 넉넉하게(ADR 025) */
+	private static final java.time.Duration STALE_DEFENSE_VERIFICATION = java.time.Duration.ofMinutes(3);
 
 	/** 재배포·초기화 제한 시간 3분보다 넉넉하게(ADR 024) */
 	private static final java.time.Duration STALE_REDEPLOY = java.time.Duration.ofMinutes(4);
@@ -81,8 +85,10 @@ public class LabReconciler {
 	/** 백엔드 재시작으로 결과를 잃은 검증(2분이 지난 RUNNING)을 ERROR로 끝낸다(ADR 023) */
 	private void failStaleVerifications() {
 		Instant now = clock.instant();
-		int failed = transactionTemplate.execute(tx -> verificationRepository.failStale(VerificationStatus.RUNNING,
-				VerificationStatus.ERROR, STALE_VERIFICATION_MESSAGE, now.minus(STALE_VERIFICATION), now)
+		int failed = transactionTemplate.execute(tx -> verificationRepository.failStale(VerificationType.ATTACK,
+				VerificationStatus.RUNNING, VerificationStatus.ERROR, STALE_VERIFICATION_MESSAGE, now.minus(STALE_VERIFICATION), now)
+				+ verificationRepository.failStale(VerificationType.DEFENSE, VerificationStatus.RUNNING, VerificationStatus.ERROR,
+						STALE_VERIFICATION_MESSAGE, now.minus(STALE_DEFENSE_VERIFICATION), now)
 				+ redeployRepository.failStale(RedeployStatus.RUNNING, RedeployStatus.ERROR, STALE_VERIFICATION_MESSAGE,
 						now.minus(STALE_REDEPLOY), now));
 		if (failed > 0) {

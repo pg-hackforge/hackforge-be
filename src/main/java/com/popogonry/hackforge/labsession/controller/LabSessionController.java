@@ -24,6 +24,7 @@ import com.popogonry.hackforge.labsession.dto.HintResponse;
 import com.popogonry.hackforge.labsession.dto.LabHintsResponse;
 import com.popogonry.hackforge.labsession.dto.LabSessionResponse;
 import com.popogonry.hackforge.labsession.dto.RedeployResponse;
+import com.popogonry.hackforge.labsession.dto.SolutionResponse;
 import com.popogonry.hackforge.labsession.dto.ResetLabRequest;
 import com.popogonry.hackforge.labsession.dto.ResetLabResponse;
 import com.popogonry.hackforge.labsession.dto.VerificationResponse;
@@ -89,6 +90,18 @@ class LabSessionController {
 	@ResponseStatus(HttpStatus.ACCEPTED)
 	VerificationResponse requestAttackVerification(@PathVariable long id, Authentication authentication) {
 		return VerificationResponse.from(verificationService.requestAttackVerification(id, userId(authentication)));
+	}
+
+	/** 접수만 하고 바로 응답한다. 결과는 getVerification으로 polling한다(ADR 025) */
+	@PostMapping("/api/labs/{id}/defense-verifications")
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	VerificationResponse requestDefenseVerification(@PathVariable long id, Authentication authentication) {
+		return VerificationResponse.from(verificationService.requestDefenseVerification(id, userId(authentication)));
+	}
+
+	@PostMapping("/api/labs/{id}/solution")
+	SolutionResponse openSolution(@PathVariable long id, Authentication authentication) {
+		return labSessionService.openSolution(id, userId(authentication));
 	}
 
 	@GetMapping("/api/labs/{id}/verifications")
@@ -158,7 +171,8 @@ class LabSessionController {
 	private LabSessionResponse response(LabSession session) {
 		return LabSessionResponse.from(session, labProperties, activityTracker.latest(session.getId()).orElse(null),
 				targetUrl(session), labSessionService.countHintsRevealed(session.getId(), LabStage.ATTACK),
-				labSessionService.countHintsRevealed(session.getId(), LabStage.DEFENSE));
+				labSessionService.countHintsRevealed(session.getId(), LabStage.DEFENSE),
+				labSessionService.countDefenseAttempts(session.getId()), labSessionService.isSolutionAvailable(session));
 	}
 
 	/**

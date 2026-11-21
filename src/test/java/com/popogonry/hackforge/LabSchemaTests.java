@@ -109,6 +109,25 @@ class LabSchemaTests {
 		assertThat(jdbcTemplate.queryForObject("select readonly_paths from challenges", String.class)).isNull();
 	}
 
+	/** ADR 025. 방어 검증 결과 컬럼과 세션의 완료·해답 시각은 비어 있을 수 있다 */
+	@Test
+	void defenseColumnsAreNullable() {
+		insertSession("READY");
+		long id = sessionId();
+		jdbcTemplate.update("insert into verifications (session_id, type, status, started_at) values (?, 'ATTACK', 'PASS', now())", id);
+		jdbcTemplate.update("""
+				insert into verifications (session_id, type, status, started_at, security_passed, functional_passed,
+				  security_message, functional_message, defense_hints_revealed, after_solution)
+				values (?, 'DEFENSE', 'FAIL', now(), false, true, 'a', 'b', 2, false)
+				""", id);
+		jdbcTemplate.update("update lab_sessions set completed_at = now(), solution_viewed_at = now() where id = ?", id);
+
+		assertThatThrownBy(() -> jdbcTemplate.update(
+				"insert into verifications (session_id, type, status, started_at, defense_hints_revealed) values (?, 'DEFENSE', 'FAIL', now(), 4)",
+				id))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
 	@Test
 	void stageStartsAtAttackAndRejectsUnknown() {
 		insertSession("READY");

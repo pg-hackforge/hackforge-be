@@ -42,6 +42,16 @@ public class Challenge {
 	/** 수정 불가 파일(/app 기준 glob, 빈칸으로 나눔). null이면 백엔드 기본값(ADR 024) */
 	private String readonlyPaths;
 
+	/** 방어 검증의 기존 공격과 정상 기능 테스트(ADR 014, ADR 025) */
+	private String exploit;
+
+	private String functionalTest;
+
+	/** 해답(Markdown). 방어 검증 FAIL이 {@link #maxDefenseAttempts}만큼 쌓이면 열 수 있다(ADR 025) */
+	private String solution;
+
+	private short maxDefenseAttempts;
+
 	private Instant createdAt;
 
 }

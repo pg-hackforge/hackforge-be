@@ -68,6 +68,12 @@ public class LabSession {
 
 	private Instant endedAt;
 
+	/** 첫 방어 검증 PASS 시각(ADR 025). 바꾸는 곳은 {@code LabSessionRepository.complete}뿐이다 */
+	private Instant completedAt;
+
+	/** 해답을 처음 연 시각(ADR 025) */
+	private Instant solutionViewedAt;
+
 	/** 낙관적 잠금. 읽은 뒤 다른 쪽이 먼저 저장했으면 이쪽 저장이 실패한다 */
 	@Version
 	private long version;
@@ -111,7 +117,8 @@ public class LabSession {
 	}
 
 	/**
-	 * {@code READY}일 때만 값이 있다. 이 시각이 지나도록 활동이 없으면 idle 종료한다.
+	 * {@code READY}일 때만 값이 있다. 이 시각이 지나도록 활동이 없으면 idle 종료한다. 실습을 완료한 뒤 활동이 없으면
+	 * 완료 시각에서 {@link #COMPLETED_IDLE_TIMEOUT}, 완료 뒤 활동이 있으면 평소처럼 마지막 활동에서 {@code idleTimeout}이다(ADR 025)
 	 * @param recent 아직 DB에 쓰지 않은 활동 시각(ActivityTracker). 없으면 null. DB 값과 둘 중 최근 값으로 센다
 	 */
 	public Instant idleDeadline(Duration idleTimeout, Instant recent) {
@@ -119,8 +126,16 @@ public class LabSession {
 			return null;
 		}
 		Instant last = recent != null && recent.isAfter(lastActivityAt) ? recent : lastActivityAt;
-		return last.plus(idleTimeout);
+		Instant deadline = last.plus(idleTimeout);
+		if (completedAt != null && !last.isAfter(completedAt)) {
+			Instant afterCompletion = completedAt.plus(COMPLETED_IDLE_TIMEOUT);
+			return afterCompletion.isBefore(deadline) ? afterCompletion : deadline;
+		}
+		return deadline;
 	}
+
+	/** 실습을 완료한 뒤 활동이 없을 때 종료까지(ADR 025) */
+	public static final Duration COMPLETED_IDLE_TIMEOUT = Duration.ofMinutes(5);
 
 	/** 생성 실패 후 다시 만든다. 지금까지 재시도한 횟수를 {@code startAttempts}에 센다 */
 	public void retry(Instant now) {

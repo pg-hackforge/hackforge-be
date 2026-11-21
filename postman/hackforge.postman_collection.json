@@ -1747,7 +1747,7 @@
     },
     {
       "name": "9. 실습",
-      "description": "시작 요청은 세션 행만 만들고 202로 바로 응답한다. reconciler가 3초마다 namespace와 Pod를 만들고 상태를 CREATING → INITIALIZING → READY로 바꾼다(ADR 012). READY가 되면 targetUrl(공격 대상 포트, 개발 8081)로 공격 대상 페이지를 연다(ADR 022). 공격 힌트 공개와 공격 검증(비동기, 결과는 polling)도 해 본다(ADR 023). 공격하지 않았으니 결과는 FAIL이다. 준비 중에는 prepStep이 SPACE → CONTAINER → LOADING → STARTING 순서로 바뀌고 READY에서 null이 된다(ADR 021). 개발 VM에서 sqli-login은 READY까지 약 70초. 방어 단계에서는 웹 IDE 파일 API, 재배포, 서비스 초기화, 실습 환경 다시 만들기, 방어 힌트를 쓴다(ADR 024).\n준비: bootRun 전에 환경 변수 HACKFORGE_LAB_KUBECONFIG에 백엔드 kubeconfig 경로를 넣는다(hackforge-be CLAUDE.md). 문제 이미지가 노드에 import돼 있어야 한다.\n'상태 조회'와 '종료 확인'은 손으로 보낼 때는 원하는 상태가 될 때까지 다시 누르고, Runner에서는 3초 간격으로 알아서 반복한다.\nREADY가 된 뒤 공격과 방어는 관리자 kubectl로 Pod 안에서 한다. 학습자용 API는 #8(공격 대상 화면과 웹 터미널), #9(공격 검증), #10(방어: 웹 IDE, 재빌드·재배포, 초기화), #11(방어 검증)에서 만든다.",
+      "description": "시작 요청은 세션 행만 만들고 202로 바로 응답한다. reconciler가 3초마다 namespace와 Pod를 만들고 상태를 CREATING → INITIALIZING → READY로 바꾼다(ADR 012). READY가 되면 targetUrl(공격 대상 포트, 개발 8081)로 공격 대상 페이지를 연다(ADR 022). 공격 힌트 공개와 공격 검증(비동기, 결과는 polling)도 해 본다(ADR 023). 공격하지 않았으니 결과는 FAIL이다. 준비 중에는 prepStep이 SPACE → CONTAINER → LOADING → STARTING 순서로 바뀌고 READY에서 null이 된다(ADR 021). 개발 VM에서 sqli-login은 READY까지 약 70초. 방어 단계에서는 웹 IDE 파일 API, 재배포, 서비스 초기화, 실습 환경 다시 만들기, 방어 힌트를 쓴다(ADR 024). 방어 검증(코드를 고치지 않았으니 FAIL)과 잠긴 해답도 본다(ADR 025).\n준비: bootRun 전에 환경 변수 HACKFORGE_LAB_KUBECONFIG에 백엔드 kubeconfig 경로를 넣는다(hackforge-be CLAUDE.md). 문제 이미지가 노드에 import돼 있어야 한다.\n'상태 조회'와 '종료 확인'은 손으로 보낼 때는 원하는 상태가 될 때까지 다시 누르고, Runner에서는 3초 간격으로 알아서 반복한다.\nREADY가 된 뒤 공격과 방어는 관리자 kubectl로 Pod 안에서 한다. 학습자용 API는 #8(공격 대상 화면과 웹 터미널), #9(공격 검증), #10(방어: 웹 IDE, 재빌드·재배포, 초기화), #11(방어 검증)에서 만들었다.",
       "item": [
         {
           "name": "학습자 로그인 (승인됨)",
@@ -2458,6 +2458,130 @@
               ]
             },
             "description": "공격 힌트와 같은 규칙으로 1 → 2 → 3 순서로 공개한다. 방어 단계에서만 된다(ADR 024)."
+          }
+        },
+        {
+          "name": "방어 검증 요청",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.test('.type = DEFENSE, .status = RUNNING', () => { pm.expect(pm.response.json().type).to.eql('DEFENSE'); pm.expect(pm.response.json().status).to.eql('RUNNING'); });",
+                  "pm.collectionVariables.set('verificationId', pm.response.json().id);",
+                  "pm.collectionVariables.set('pollCount', 0);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/defense-verifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "defense-verifications"
+              ]
+            },
+            "description": "기존 공격(exploit.sh)과 정상 기능 테스트(functional-test.sh)를 둘 다 실행한다(ADR 025). 공격이 모두 막히고 정상 기능이 동작하면 PASS. 지금 떠 있는 서비스를 시험하므로 고친 코드는 먼저 재배포한다. 첫 PASS에 실습 완료 시각이 남고, 그 뒤 활동이 없으면 5분 뒤 종료된다."
+          }
+        },
+        {
+          "name": "방어 검증 결과 (끝날 때까지)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Runner로 반복할 때마다 1초 쉰다",
+                  "if (pm.collectionVariables.get('pollCount')) {",
+                  "  setTimeout(() => {}, 1000);",
+                  "}",
+                  "const v = pm.response.json();",
+                  "const n = (pm.collectionVariables.get('pollCount') || 0) + 1;",
+                  "if (v.status === 'RUNNING' && n < 180) {",
+                  "  pm.collectionVariables.set('pollCount', n);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.collectionVariables.set('pollCount', 0);",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "// 코드를 고치지 않았으니 공격이 아직 통해서 FAIL이다",
+                  "pm.test('결과: ' + v.status + ' - ' + v.message, () => pm.expect(v.status).to.eql('FAIL'));",
+                  "pm.test('보안 테스트 통과 아님, 기능 테스트 통과', () => { pm.expect(v.securityPassed).to.eql(false); pm.expect(v.functionalPassed).to.eql(true); });",
+                  "pm.test('해답 확인 전', () => pm.expect(v.afterSolution).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/verifications/{{verificationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "verifications",
+                "{{verificationId}}"
+              ]
+            },
+            "description": "끝날 때까지 RUNNING이다. securityMessage에 아직 통하는 payload, functionalMessage에 실패한 기능이 나온다."
+          }
+        },
+        {
+          "name": "해답 열기 (아직 잠김)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('.code = SOLUTION_LOCKED', () => pm.expect(pm.response.json().code).to.eql('SOLUTION_LOCKED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/solution",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "solution"
+              ]
+            },
+            "description": "방어 검증 FAIL이 문제의 최대 시도 횟수(sqli-login 5회)만큼 쌓여야 열 수 있다. 세션 응답의 defenseAttempts, maxDefenseAttempts, solutionAvailable로 확인한다."
           }
         },
         {

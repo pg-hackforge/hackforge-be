@@ -405,6 +405,59 @@ class LabReconcilerTests {
 		assertThat(row.get("finished_at")).isNotNull();
 	}
 
+	/** ADR 025. 방어 검증은 스크립트가 둘이라 3분이 지나야 결과를 잃은 것으로 본다. 공격 검증은 2분 그대로 */
+	@Test
+	void staleDefenseVerificationBecomesErrorAfterThreeMinutes() {
+		long id = readySession();
+		String insert = "insert into verifications (session_id, type, status, started_at) values (?, ?, 'RUNNING', ?) returning id";
+		long defense = jdbcTemplate.queryForObject(insert, Long.class, id, "DEFENSE",
+				Timestamp.from(now.instant().minus(Duration.ofSeconds(150))));
+
+		labReconciler.reconcileAll();
+		assertThat(jdbcTemplate.queryForObject("select status from verifications where id = ?", String.class, defense))
+			.isEqualTo("RUNNING");
+
+		now.advance(Duration.ofSeconds(31));
+		labReconciler.reconcileAll();
+		assertThat(jdbcTemplate.queryForObject("select status from verifications where id = ?", String.class, defense))
+			.isEqualTo("ERROR");
+	}
+
+	/** ADR 025. 완료 뒤 활동이 없으면 5분 뒤 IDLE로 끝난다 */
+	@Test
+	void completedSessionWithoutActivityEndsAfterFiveMinutes() {
+		long id = readySession();
+		now.advance(Duration.ofMinutes(1));
+		jdbcTemplate.update("update lab_sessions set completed_at = ? where id = ?", Timestamp.from(now.instant()), id);
+
+		now.advance(Duration.ofMinutes(5));
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("READY");
+
+		now.advance(Duration.ofSeconds(1));
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("TERMINATING");
+		assertThat(row(id).get("end_reason")).isEqualTo("IDLE");
+	}
+
+	/** ADR 025. 완료 뒤 5분 안에 활동이 있으면 그 뒤로는 평소처럼 30분. 메모리에만 있는 활동도 센다 */
+	@Test
+	void activityAfterCompletionGoesBackToThirtyMinutes() {
+		long id = readySession();
+		jdbcTemplate.update("update lab_sessions set completed_at = ? where id = ?", Timestamp.from(now.instant()), id);
+		now.advance(Duration.ofMinutes(4));
+		activityTracker.record(id);
+
+		now.advance(Duration.ofMinutes(30));
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("READY");
+
+		now.advance(Duration.ofSeconds(1));
+		labReconciler.reconcileAll();
+		assertThat(statusOf(id)).isEqualTo("TERMINATING");
+		assertThat(row(id).get("end_reason")).isEqualTo("IDLE");
+	}
+
 	/** ADR 024. 재배포·초기화는 4분이 지나야 결과를 잃은 것으로 본다(제한 시간 3분) */
 	@Test
 	void staleRunningRedeployBecomesErrorAfterFourMinutes() {
