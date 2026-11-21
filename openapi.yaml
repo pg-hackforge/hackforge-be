@@ -1522,9 +1522,9 @@ components:
     LabEndReason:
       type: string
       description: >-
-        `USER` 학습자 종료, `IDLE` idle timeout, `POD_LOST` 실습 중 실습 환경 비정상 종료,
-        `COMPLETED` 실습 완료 뒤 5분 동안 활동이 없어 종료(hackforge-docs ADR 025)
-      enum: [USER, IDLE, POD_LOST, COMPLETED]
+        `USER` 학습자 종료, `IDLE` idle timeout(실습 완료 뒤 종료 포함, 완료 여부는 세션의 `completedAt`),
+        `POD_LOST` 실습 중 실습 환경 비정상 종료
+      enum: [USER, IDLE, POD_LOST]
     LabStage:
       type: string
       description: '학습 단계(hackforge-docs ADR 023). `ATTACK`에서 시작하고 공격 검증 PASS나 건너뛰기로 `DEFENSE`가 되며 되돌아가지 않는다'
