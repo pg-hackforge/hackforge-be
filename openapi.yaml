@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.8.0
+  version: 0.9.0
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -49,6 +49,10 @@ tags:
       클라이언트는 `GET /api/labs/{id}`를 polling해 상태를 확인한다.
       polling 간격은 `CREATING`, `INITIALIZING`, `TERMINATING`에서 2~3초, `READY`에서 10초 내외이고,
       `DELETED`, `FAILED`가 되면 중단한다. polling 요청은 활동으로 집계하지 않는다.
+
+
+      관리자(`ADMIN`)는 세션 조회 API(`GET /api/labs/{id}`와 그 검증, 재배포, 힌트, 상태 기록)를 모든 세션에 쓸 수 있다.
+      바꾸는 요청과 해답 다시 보기는 세션 주인만 받는다(hackforge-docs ADR 026).
 
 
       idle 종료: `READY` 이후 `idleDeadline`까지 활동이 없으면 서버가 세션을 종료한다(`IDLE`).
@@ -349,6 +353,68 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/UserNotFound'
+  /api/admin/labs:
+    get:
+      tags: [admin]
+      summary: 세션 목록
+      description: >-
+        모든 학습자의 실습 세션을 최근 시작 순으로 준다(hackforge-docs ADR 026). 기본은 종료 전 세션이고,
+        `status=ALL`이면 종료한 세션(`DELETED`, `FAILED`)도 준다. 한 세션의 기록은 학습자와 같은 조회 API
+        (`GET /api/labs/{id}`, 검증, 재배포, 힌트, 상태 기록)로 본다
+      operationId: listAdminLabs
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: 생략하면 `ACTIVE`
+          schema:
+            $ref: '#/components/schemas/AdminLabFilter'
+        - name: page
+          in: query
+          required: false
+          description: 1부터. 생략하면 1
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+      responses:
+        '200':
+          description: 세션 목록 한 페이지
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLabSessionPageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/labs/{id}/terminate:
+    post:
+      tags: [admin]
+      summary: 세션 강제 종료
+      description: >-
+        학습자의 세션을 `TERMINATING`(종료 사유 `ADMIN`)으로 바꾸고 바로 응답한다(hackforge-docs ADR 026).
+        실습 환경 삭제는 비동기이고 열린 터미널은 닫힌다. 이미 종료 중이거나 끝난 세션은 바꾸지 않고 지금 상태를 준다
+      operationId: terminateLab
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '202':
+          description: 종료 요청 접수
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabSessionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/LabNotFound'
   /api/challenges:
     get:
       tags: [lab]
@@ -441,6 +507,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
   /api/labs:
+    get:
+      tags: [lab]
+      summary: 내 실습 기록
+      description: >-
+        내 세션을 최근 시작 순으로 준다. 종료한 세션도 포함한다(hackforge-docs ADR 026). 한 세션의 기록은
+        `GET /api/labs/{id}`, 검증, 재배포, 힌트, 상태 기록 API로 본다
+      operationId: listLabs
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: 1부터. 생략하면 1
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+      responses:
+        '200':
+          description: 세션 목록 한 페이지
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabSessionPageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
     post:
       tags: [lab]
       summary: 실습 시작
@@ -1124,7 +1219,64 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/labs/{id}/events:
+    get:
+      tags: [lab]
+      summary: 상태 기록
+      description: >-
+        세션 상태가 바뀐 기록을 오래된 순으로 준다(hackforge-docs ADR 026). 이전 상태(생성이면 `null`), 다음 상태,
+        주체(학습자, 관리자, 시스템), 시각. 관리자는 모든 세션의 기록을 볼 수 있다
+      operationId: listLabEvents
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '200':
+          description: 상태 기록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LabEventResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/LabNotFound'
   /api/labs/{id}/solution:
+    get:
+      tags: [lab]
+      summary: 연 해답 다시 보기
+      description: >-
+        이 세션에서 해답을 연 적이 있으면 세션 상태와 상관없이 다시 준다(내 실습 기록, hackforge-docs ADR 026).
+        처음 여는 것은 `POST`다. 세션 주인만 볼 수 있다
+      operationId: getSolution
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+      responses:
+        '200':
+          description: 해답
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolutionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/LabNotFound'
+        '409':
+          description: 이 세션에서 해답을 연 적이 없음(`SOLUTION_LOCKED`)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
     post:
       tags: [lab]
       summary: 해답 열기
@@ -1518,12 +1670,92 @@ components:
         `FAILED` 재시도 후에도 생성 실패.
         생성에 실패하면 서버가 1회 재시도하며, 이때 `INITIALIZING`에서 `CREATING`으로 전이될 수 있다
       enum: [CREATING, INITIALIZING, READY, TERMINATING, DELETED, FAILED]
+    LabSessionPageResponse:
+      type: object
+      required: [items, page, size, totalItems, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LabSessionResponse'
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+          description: 한 페이지 크기(20)
+        totalItems:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    AdminLabFilter:
+      type: string
+      description: '`ACTIVE` 종료 전 세션, `ALL` 종료한 세션까지'
+      enum: [ACTIVE, ALL]
+    AdminLabSessionResponse:
+      type: object
+      required: [userId, userNickname, userEmail, session]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        userNickname:
+          type: string
+        userEmail:
+          type: string
+          format: email
+        session:
+          $ref: '#/components/schemas/LabSessionResponse'
+    AdminLabSessionPageResponse:
+      type: object
+      required: [items, page, size, totalItems, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLabSessionResponse'
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+          description: 한 페이지 크기(20)
+        totalItems:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    LabEventActor:
+      type: string
+      description: '`LEARNER` 학습자 요청, `ADMIN` 관리자 요청, `SYSTEM` 서버(reconciler 등)'
+      enum: [LEARNER, ADMIN, SYSTEM]
+    LabEventResponse:
+      type: object
+      required: [fromStatus, toStatus, actor, at]
+      properties:
+        fromStatus:
+          description: 이전 상태. 세션 생성이면 `null`
+          oneOf:
+            - $ref: '#/components/schemas/LabStatus'
+            - type: 'null'
+        toStatus:
+          $ref: '#/components/schemas/LabStatus'
+        actor:
+          $ref: '#/components/schemas/LabEventActor'
+        at:
+          type: string
+          format: date-time
     LabEndReason:
       type: string
       description: >-
         `USER` 학습자 종료, `IDLE` idle timeout(실습 완료 뒤 종료 포함, 완료 여부는 세션의 `completedAt`),
-        `POD_LOST` 실습 중 실습 환경 비정상 종료
-      enum: [USER, IDLE, POD_LOST]
+        `POD_LOST` 실습 중 실습 환경 비정상 종료, `ADMIN` 관리자 강제 종료(hackforge-docs ADR 026)
+      enum: [USER, IDLE, POD_LOST, ADMIN]
     LabStage:
       type: string
       description: '학습 단계(hackforge-docs ADR 023). `ATTACK`에서 시작하고 공격 검증 PASS나 건너뛰기로 `DEFENSE`가 되며 되돌아가지 않는다'
