@@ -1131,8 +1131,7 @@ paths:
       description: >-
         문제의 해답을 준다(hackforge-docs ADR 025). 방어 검증 `FAIL`이 문제의 최대 시도 횟수만큼 쌓여야 열 수 있다
         (세션 응답의 `solutionAvailable`). 처음 열 때 시각을 기록하고(`solutionViewedAt`), 그 뒤의 방어 검증은
-        `afterSolution`이 `true`다. 이미 연 해답은 세션이 끝난 뒤에도 다시 볼 수 있다.
-        세션이 `READY`이면 이 요청은 활동으로 집계한다
+        `afterSolution`이 `true`다. 세션이 `READY`일 때만 받는다(단계는 상관없음). 이 요청은 활동으로 집계한다
       operationId: openSolution
       parameters:
         - $ref: '#/components/parameters/LabSessionId'
@@ -1152,7 +1151,7 @@ paths:
         '404':
           $ref: '#/components/responses/LabNotFound'
         '409':
-          description: 아직 열 수 없음(`SOLUTION_LOCKED`)
+          description: '`READY`가 아님(`LAB_NOT_READY`), 아직 열 수 없음(`SOLUTION_LOCKED`)'
           content:
             application/problem+json:
               schema:
