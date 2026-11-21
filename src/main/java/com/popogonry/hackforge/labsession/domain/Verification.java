@@ -45,6 +45,19 @@ public class Verification {
 
 	private Instant finishedAt;
 
+	/** 방어 검증 결과(ADR 025). 공격 검증이면 모두 null */
+	private Boolean securityPassed;
+
+	private Boolean functionalPassed;
+
+	private String securityMessage;
+
+	private String functionalMessage;
+
+	private Short defenseHintsRevealed;
+
+	private Boolean afterSolution;
+
 	public Verification(long sessionId, VerificationType type, Instant now) {
 		this.sessionId = sessionId;
 		this.type = type;
@@ -52,11 +65,33 @@ public class Verification {
 		this.startedAt = now;
 	}
 
+	/** 방어 검증. 요청할 때까지 공개한 방어 힌트 수와 해답을 열었는지 남긴다 */
+	public static Verification defense(long sessionId, int defenseHintsRevealed, boolean afterSolution, Instant now) {
+		Verification verification = new Verification(sessionId, VerificationType.DEFENSE, now);
+		verification.defenseHintsRevealed = (short) defenseHintsRevealed;
+		verification.afterSolution = afterSolution;
+		return verification;
+	}
+
 	public void finish(VerificationStatus status, String message, Instant now) {
 		this.status = status;
-		this.message = message == null || message.length() <= MESSAGE_LIMIT ? message : message.substring(0, MESSAGE_LIMIT);
+		this.message = cut(message);
 		this.finishedAt = now;
 		this.durationMs = Duration.between(startedAt, now).toMillis();
+	}
+
+	/** 방어 검증 결과. {@code ERROR}면 통과 여부와 메시지는 null */
+	public void finishDefense(VerificationStatus status, String message, Boolean securityPassed, String securityMessage,
+			Boolean functionalPassed, String functionalMessage, Instant now) {
+		finish(status, message, now);
+		this.securityPassed = securityPassed;
+		this.securityMessage = cut(securityMessage);
+		this.functionalPassed = functionalPassed;
+		this.functionalMessage = cut(functionalMessage);
+	}
+
+	private static String cut(String message) {
+		return message == null || message.length() <= MESSAGE_LIMIT ? message : message.substring(0, MESSAGE_LIMIT);
 	}
 
 }

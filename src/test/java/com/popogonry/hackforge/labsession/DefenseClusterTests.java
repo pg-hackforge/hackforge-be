@@ -29,18 +29,22 @@ import com.popogonry.hackforge.labsession.cluster.ScriptResult;
 import com.popogonry.hackforge.labsession.domain.Redeploy;
 import com.popogonry.hackforge.labsession.domain.RedeployStatus;
 import com.popogonry.hackforge.labsession.domain.ResetScope;
+import com.popogonry.hackforge.labsession.domain.Verification;
+import com.popogonry.hackforge.labsession.domain.VerificationStatus;
 import com.popogonry.hackforge.labsession.dto.LabFileEntry;
 import com.popogonry.hackforge.labsession.dto.LabFileResponse;
 import com.popogonry.hackforge.labsession.service.LabFileService;
 import com.popogonry.hackforge.labsession.service.LabReconciler;
 import com.popogonry.hackforge.labsession.service.RedeployService;
+import com.popogonry.hackforge.labsession.service.VerificationService;
 import com.popogonry.hackforge.web.ApiException;
 import com.popogonry.hackforge.web.ErrorCode;
 
 /**
  * ADR 024. 개발 클러스터의 실제 Pod에서 파일 수정, 재배포, 서비스 초기화, 실습 환경 다시 만들기를 본다.
  * {@code ./gradlew clusterTest}로만 실행하고 필요한 것은 {@code KubernetesLabClusterTests}와 같다.
- * 테스트 문제 이미지 0.1.0에는 원본 사본이 없어서 READY 뒤에 {@code /app}을 {@code /hackforge/original}로 복사해 둔다(이미지가 하는 일)
+ * 테스트 문제 이미지에는 원본 사본({@code /hackforge/original})이 있다. 방어 검증(ADR 025)은 실제 문제의 공격 문자열을
+ * 공개 사본이 있는 이 저장소에 넣지 않도록 테스트용 스크립트(표시 파일이 있으면 공격이 통함)로 본다
  */
 @Tag("cluster")
 @Import(TestcontainersConfiguration.class)
@@ -65,6 +69,9 @@ class DefenseClusterTests {
 
 	@Autowired
 	RedeployService redeployService;
+
+	@Autowired
+	VerificationService verificationService;
 
 	@Autowired
 	JdbcTemplate jdbcTemplate;
@@ -102,7 +109,7 @@ class DefenseClusterTests {
 	@Test
 	void editRedeployAndResetOnRealPod() throws Exception {
 		waitUntilReady();
-		assertThat(script("mkdir -p /hackforge/original && cp -a /app/. /hackforge/original/").exitCode()).isZero();
+		assertThat(script("diff -r /app /hackforge/original").exitCode()).as("이미지의 원본 사본").isZero();
 
 		// 파일 목록과 기본 수정 불가(compose.yaml)
 		assertThat(labFileService.listLabFiles(id, userId))
@@ -180,6 +187,42 @@ class DefenseClusterTests {
 		waitUntilReady();
 		assertThat(labCluster.readFile(id, "web/index.html", 1024).status()).isEqualTo(PodFileRead.Status.NOT_FOUND);
 		assertThat(get("/")).contains("nginx");
+	}
+
+	/** 테스트용 스크립트로 FAIL(공격이 통함) → 터미널에서 고침 → PASS와 완료 시각 */
+	@Test
+	void defenseVerificationOnRealPod() throws Exception {
+		jdbcTemplate.update("update challenges set exploit = ?, functional_test = ?",
+				"test -f /tmp/hf-vulnerable && echo '아직 통함: hf-test'",
+				"wget -q -O /dev/null http://127.0.0.1:8080/ && echo '정상 기능 1개 동작'");
+		waitUntilReady();
+		assertThat(script("touch /tmp/hf-vulnerable").exitCode()).isZero();
+
+		Verification fail = waitUntilVerified(verificationService.requestDefenseVerification(id, userId).getId());
+		assertThat(fail.getStatus()).isEqualTo(VerificationStatus.FAIL);
+		assertThat(fail.getSecurityPassed()).isFalse();
+		assertThat(fail.getSecurityMessage()).isEqualTo("아직 통함: hf-test");
+		assertThat(fail.getFunctionalPassed()).isTrue();
+		assertThat(fail.getFunctionalMessage()).isEqualTo("정상 기능 1개 동작");
+
+		assertThat(script("rm /tmp/hf-vulnerable").exitCode()).isZero();
+		Verification pass = waitUntilVerified(verificationService.requestDefenseVerification(id, userId).getId());
+		assertThat(pass.getStatus()).isEqualTo(VerificationStatus.PASS);
+		assertThat(pass.getMessage()).isEqualTo("공격이 모두 막히고 정상 기능이 동작해요");
+		assertThat(jdbcTemplate.queryForObject("select completed_at from lab_sessions where id = ?", Timestamp.class, id))
+			.isNotNull();
+	}
+
+	private Verification waitUntilVerified(long verificationId) throws InterruptedException {
+		Instant deadline = Instant.now().plus(Duration.ofMinutes(3));
+		while (true) {
+			Verification verification = verificationService.getVerification(id, verificationId, userId);
+			if (verification.getStatus() != VerificationStatus.RUNNING) {
+				return verification;
+			}
+			assertThat(Instant.now()).as("3분 안에 끝남").isBefore(deadline);
+			Thread.sleep(1000);
+		}
 	}
 
 	private String compose() {

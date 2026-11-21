@@ -56,6 +56,22 @@ public interface LabSessionRepository extends JpaRepository<LabSession, Long> {
 			""")
 	int writeActivity(long id, Instant at, LabStatus ready);
 
+	/** 첫 방어 검증 PASS에만 완료 시각을 남긴다(ADR 025). version을 올리는 이유는 {@link #terminate}와 같다 */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("""
+			update LabSession s set s.completedAt = :now, s.version = s.version + 1
+			where s.id = :id and s.completedAt is null
+			""")
+	int complete(long id, Instant now);
+
+	/** 해답을 처음 연 시각만 남긴다(ADR 025) */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("""
+			update LabSession s set s.solutionViewedAt = :now, s.version = s.version + 1
+			where s.id = :id and s.solutionViewedAt is null
+			""")
+	int markSolutionViewed(long id, Instant now);
+
 	/** 공격 단계일 때만 방어 단계로 넘긴다(공격 검증 PASS, ADR 023). version을 올리는 이유는 {@link #terminate}와 같다 */
 	@Modifying(flushAutomatically = true, clearAutomatically = true)
 	@Query("""
