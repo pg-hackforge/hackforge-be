@@ -405,6 +405,24 @@ class LabReconcilerTests {
 		assertThat(row.get("finished_at")).isNotNull();
 	}
 
+	/** ADR 024. 재배포·초기화는 4분이 지나야 결과를 잃은 것으로 본다(제한 시간 3분) */
+	@Test
+	void staleRunningRedeployBecomesErrorAfterFourMinutes() {
+		long id = readySession();
+		String insert = "insert into redeploys (session_id, kind, status, started_at) values (?, 'REDEPLOY', 'RUNNING', ?) returning id";
+		long stale = jdbcTemplate.queryForObject(insert, Long.class, id, Timestamp.from(now.instant().minus(Duration.ofMinutes(5))));
+
+		labReconciler.reconcileAll();
+		assertThat(jdbcTemplate.queryForObject("select status from redeploys where id = ?", String.class, stale))
+			.isEqualTo("ERROR");
+
+		jdbcTemplate.update("delete from redeploys");
+		long running = jdbcTemplate.queryForObject(insert, Long.class, id, Timestamp.from(now.instant().minus(Duration.ofMinutes(3))));
+		labReconciler.reconcileAll();
+		assertThat(jdbcTemplate.queryForObject("select status from redeploys where id = ?", String.class, running))
+			.isEqualTo("RUNNING");
+	}
+
 	@Test
 	void recentRunningVerificationIsKept() {
 		long id = readySession();

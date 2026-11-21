@@ -106,23 +106,33 @@ public class LabSessionService {
 	/** 다음 공격 힌트 하나를 공개하고 공개 시각을 남긴다(ADR 023). {@code READY}이고 공격 단계일 때만 */
 	@Transactional
 	public HintResponse revealAttackHint(long id, long userId) {
+		return revealHint(id, userId, LabStage.ATTACK);
+	}
+
+	/** 다음 방어 힌트 하나를 공개한다(ADR 024). {@code READY}이고 방어 단계일 때만 */
+	@Transactional
+	public HintResponse revealDefenseHint(long id, long userId) {
+		return revealHint(id, userId, LabStage.DEFENSE);
+	}
+
+	/** 그 단계의 힌트는 그 단계에서만 1 → 2 → 3 순서로 공개한다. 세션 행을 잠가 같은 세션의 공개 요청이 줄을 선다 */
+	private HintResponse revealHint(long id, long userId, LabStage stage) {
 		LabSession lab = getLab(id, userId);
 		labSessionRepository.lockById(id);
 		requireReady(lab);
-		if (lab.getStage() != LabStage.ATTACK) {
+		if (lab.getStage() != stage) {
 			throw new ApiException(ErrorCode.WRONG_LAB_STAGE);
 		}
 		long challengeId = lab.getChallenge().getId();
-		int revealed = labHintRepository.countRevealed(id, LabStage.ATTACK);
-		if (revealed >= labHintRepository.countHints(challengeId, LabStage.ATTACK)) {
+		int revealed = labHintRepository.countRevealed(id, stage);
+		if (revealed >= labHintRepository.countHints(challengeId, stage)) {
 			throw new ApiException(ErrorCode.NO_MORE_HINTS);
 		}
 		int position = revealed + 1;
 		Instant now = clock.instant();
-		labHintRepository.reveal(id, LabStage.ATTACK, position, now);
+		labHintRepository.reveal(id, stage, position, now);
 		activityTracker.record(id);
-		return new HintResponse(LabStage.ATTACK, position,
-				labHintRepository.content(challengeId, LabStage.ATTACK, position), now);
+		return new HintResponse(stage, position, labHintRepository.content(challengeId, stage, position), now);
 	}
 
 	/** 공개한 힌트는 단계와 상관없이 다시 볼 수 있다 */
@@ -133,8 +143,8 @@ public class LabSessionService {
 				labHintRepository.countHints(challengeId, LabStage.DEFENSE), labHintRepository.findRevealed(id, challengeId));
 	}
 
-	public int countAttackHintsRevealed(long id) {
-		return labHintRepository.countRevealed(id, LabStage.ATTACK);
+	public int countHintsRevealed(long id, LabStage stage) {
+		return labHintRepository.countRevealed(id, stage);
 	}
 
 	/** 공격 단계에서는 힌트를 몇 개 봤든 건너뛸 수 있다(ADR 023) */

@@ -34,6 +34,11 @@ public class FakeLabCluster implements LabCluster {
 
 	private volatile boolean shellFailure;
 
+	/** 세션별 /app 파일과 원본(/hackforge/original) */
+	private final Map<Long, java.util.TreeMap<String, byte[]>> files = new java.util.concurrent.ConcurrentHashMap<>();
+
+	private final Map<Long, java.util.TreeMap<String, byte[]>> originals = new java.util.concurrent.ConcurrentHashMap<>();
+
 	/** 스크립트 실행 흉내. 기본은 exit 1, 출력 없음 */
 	private volatile java.util.function.BiFunction<Long, String, ScriptResult> scriptRunner = (id, script) -> new ScriptResult(1, "", false);
 
@@ -104,10 +109,94 @@ public class FakeLabCluster implements LabCluster {
 		return shell;
 	}
 
+	/** 서비스 초기화 스크립트(원본 복원)가 성공하면 파일도 원본으로 되돌린다 */
 	@Override
 	public ScriptResult runScript(long sessionId, String script, java.time.Duration timeout) {
 		throwIfFailing(sessionId);
-		return scriptRunner.apply(sessionId, script);
+		ScriptResult result = scriptRunner.apply(sessionId, script);
+		if (result.exitCode() == 0 && script.contains("/hackforge/original/.") && originals.containsKey(sessionId)) {
+			files.put(sessionId, copy(originals.get(sessionId)));
+		}
+		return result;
+	}
+
+	@Override
+	public java.util.List<PodFile> listFiles(long sessionId) {
+		throwIfFailing(sessionId);
+		return files(sessionId).entrySet()
+			.stream()
+			.map(e -> new PodFile(e.getKey(), e.getValue().length,
+					e.getValue().length <= 1024 * 1024 && contains(e.getValue(), (byte) 0)))
+			.toList();
+	}
+
+	@Override
+	public PodFileRead readFile(long sessionId, String path, int maxBytes) {
+		throwIfFailing(sessionId);
+		byte[] content = files(sessionId).get(path);
+		if (content == null) {
+			return PodFileRead.of(PodFileRead.Status.NOT_FOUND);
+		}
+		if (content.length > maxBytes) {
+			return PodFileRead.of(PodFileRead.Status.TOO_LARGE);
+		}
+		return new PodFileRead(PodFileRead.Status.OK, content, sha256(content));
+	}
+
+	@Override
+	public PodFileWrite writeFile(long sessionId, String path, byte[] content, String baseSha256) {
+		throwIfFailing(sessionId);
+		byte[] current = files(sessionId).get(path);
+		String currentSha = current == null ? "" : sha256(current);
+		if (baseSha256 != null && !baseSha256.equals(currentSha)) {
+			return new PodFileWrite(true, currentSha);
+		}
+		files(sessionId).put(path, content);
+		return new PodFileWrite(false, sha256(content));
+	}
+
+	@Override
+	public PodFileRead revertFile(long sessionId, String path) {
+		throwIfFailing(sessionId);
+		byte[] original = originals.getOrDefault(sessionId, new java.util.TreeMap<>()).get(path);
+		if (original == null) {
+			return PodFileRead.of(PodFileRead.Status.NOT_FOUND);
+		}
+		files(sessionId).put(path, original);
+		return new PodFileRead(PodFileRead.Status.OK, original, sha256(original));
+	}
+
+	/** 이 세션 Pod의 /app과 원본을 이 내용으로 둔다 */
+	public void setFiles(long sessionId, Map<String, byte[]> content) {
+		files.put(sessionId, new java.util.TreeMap<>(content));
+		originals.put(sessionId, new java.util.TreeMap<>(content));
+	}
+
+	/** 지금 /app 파일 내용(터미널에서 고친 것처럼 바꿀 때도 쓴다) */
+	public java.util.TreeMap<String, byte[]> files(long sessionId) {
+		return files.computeIfAbsent(sessionId, id -> new java.util.TreeMap<>());
+	}
+
+	public static String sha256(byte[] content) {
+		try {
+			return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(content));
+		}
+		catch (java.security.NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	private static boolean contains(byte[] content, byte b) {
+		for (byte c : content) {
+			if (c == b) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static java.util.TreeMap<String, byte[]> copy(java.util.TreeMap<String, byte[]> source) {
+		return new java.util.TreeMap<>(source);
 	}
 
 	/** 스크립트 실행 결과를 정한다. 예외를 던지면 실행 실패 */
@@ -214,6 +303,8 @@ public class FakeLabCluster implements LabCluster {
 		shells.clear();
 		shellFailure = false;
 		scriptRunner = (id, script) -> new ScriptResult(1, "", false);
+		files.clear();
+		originals.clear();
 		onCreatePod = () -> {
 		};
 	}
