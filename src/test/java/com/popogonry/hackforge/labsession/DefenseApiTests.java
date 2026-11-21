@@ -124,6 +124,7 @@ class DefenseApiTests {
 	}
 
 	static String fileUrl(long id, String path) {
+		// 인코딩은 MockMvc가 한다
 		return "/api/labs/" + id + "/files/content?path=" + path;
 	}
 
@@ -193,6 +194,19 @@ class DefenseApiTests {
 		assertThat(activityTracker.latest(id)).isPresent();
 	}
 
+	/** 경로는 스크립트에 글자 그대로 넣지 않아서 한글, 빈칸, 따옴표, 셸 특수 문자, -로 시작하는 이름도 된다 */
+	@Test
+	void anyFileNameWorksExceptControlCharacters() throws Exception {
+		ApiClient kim = login("kim");
+		long id = session("kim", "DEFENSE");
+
+		for (String path : List.of("web/새 파일 (1).php", "web/it's $(id) `x`;.php", "-n.txt")) {
+			kim.put(fileUrl(id, path), saveJson("ok", null)).andExpect(status().isOk()).andExpect(jsonPath("$.path").value(path));
+			kim.get(fileUrl(id, path)).andExpect(status().isOk()).andExpect(jsonPath("$.content").value("ok"));
+			assertThat(file(id, path)).isEqualTo("ok");
+		}
+	}
+
 	/** 터미널에서 바뀐 파일은 덮어쓰지 않는다. 기준 해시 없이 보내면(덮어쓰기) 저장한다 */
 	@Test
 	void changedFileIsConflictUnlessOverwrite() throws Exception {
@@ -245,7 +259,8 @@ class DefenseApiTests {
 		ApiClient kim = login("kim");
 		long id = session("kim", "DEFENSE");
 
-		for (String path : List.of("../etc/passwd", "/etc/passwd", "web/../../etc/passwd", "", "web/a b.php")) {
+		for (String path : List.of("../etc/passwd", "/etc/passwd", "web/../../etc/passwd", "", "web//a.php", "./a.php",
+				"web/a\nb.php", "web/a\tb.php")) {
 			kim.get(fileUrl(id, path))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));

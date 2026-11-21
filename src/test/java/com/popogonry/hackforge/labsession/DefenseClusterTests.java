@@ -118,6 +118,17 @@ class DefenseClusterTests {
 		assertThatThrownBy(() -> labFileService.saveLabFile(id, "web/index.html", "y", "0".repeat(64), userId))
 			.isInstanceOfSatisfying(ApiException.class, ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FILE_CHANGED));
 
+		// 경로는 스크립트에 글자 그대로 넣지 않는다. 한글, 빈칸, 따옴표, 셸 특수 문자, -로 시작하는 이름
+		for (String path : java.util.List.of("web/새 파일 (1).html", "web/it's $(touch hf-pwned) `x`;.txt", "-n.txt")) {
+			LabFileResponse odd = labFileService.saveLabFile(id, path, "한글 내용\n", null, userId);
+			assertThat(labFileService.getLabFile(id, path, userId)).isEqualTo(odd);
+			assertThat(odd.content()).isEqualTo("한글 내용\n");
+		}
+		assertThat(labFileService.listLabFiles(id, userId)).extracting(LabFileEntry::path)
+			.contains("web/새 파일 (1).html", "web/it's $(touch hf-pwned) `x`;.txt", "-n.txt")
+			.doesNotContain("hf-pwned", "web/hf-pwned");
+		assertThat(script("rm -- 'web/새 파일 (1).html' web/it*.txt ./-n.txt").exitCode()).isZero();
+
 		// 바이너리와 큰 파일
 		assertThat(script("printf 'a\\000b' > bin.dat && head -c 1100000 /dev/zero | tr '\\000' a > big.txt").exitCode()).isZero();
 		assertThat(labFileService.listLabFiles(id, userId)).anySatisfy(f -> {

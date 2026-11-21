@@ -417,17 +417,19 @@ class KubernetesLabCluster implements LabCluster {
 	public java.util.List<PodFile> listFiles(long sessionId) {
 		String output = fileScript(sessionId, """
 				cd /app || exit 1
-				find . -type f | sed 's|^\\./||' | sort | while IFS= read -r f; do
-					s=$(stat -c %s "$f")
+				nl='
+				'
+				find . -type f ! -name "*$nl*" | sed 's|^\\./||' | sort | while IFS= read -r f; do
+					s=$(stat -c %s "./$f")
 					b=0
-					if [ "$s" -le 1048576 ] && [ "$(tr -d '\\000' < "$f" | wc -c)" -lt "$s" ]; then b=1; fi
+					if [ "$s" -le 1048576 ] && [ "$(tr -d '\\000' < "./$f" | wc -c)" -lt "$s" ]; then b=1; fi
 					printf '%s\\t%s\\t%s\\n' "$s" "$b" "$f"
 				done
 				""");
 		java.util.List<PodFile> files = new java.util.ArrayList<>();
 		for (String line : output.split("\n")) {
 			String[] parts = line.split("\t", 3);
-			if (parts.length == 3) {
+			if (parts.length == 3 && parts[0].strip().matches("[0-9]+")) {
 				files.add(new PodFile(parts[2], Long.parseLong(parts[0].strip()), parts[1].equals("1")));
 			}
 		}
@@ -439,25 +441,25 @@ class KubernetesLabCluster implements LabCluster {
 	public PodFileRead readFile(long sessionId, String path, int maxBytes) {
 		return parseRead(fileScript(sessionId, """
 				cd /app || exit 1
-				f='%s'
+				%s
 				[ -f "$f" ] || { echo NOT_FOUND; exit 0; }
 				[ "$(stat -c %%s "$f")" -le %d ] || { echo TOO_LARGE; exit 0; }
 				echo OK
 				sha256sum "$f" | cut -d' ' -f1
 				base64 "$f"
-				""".formatted(path, maxBytes)));
+				""".formatted(pathVariable(path), maxBytes)));
 	}
 
 	/**
-	 * 지금 해시를 확인한 뒤 내용을 base64로 받아 임시 파일에 풀고 덮어쓴다(권한 유지). 경로는 호출하는 쪽이 검사한 것
-	 * ({@code /app} 기준, 영문·숫자·{@code ._-/}만)이고 기준 해시는 hex라 스크립트에 그대로 넣는다
+	 * 지금 해시를 확인한 뒤 내용을 base64로 받아 임시 파일에 풀고 덮어쓴다(권한 유지). 기준 해시는 서비스가 받은 값이라
+	 * 따옴표 안에 넣기 전에 hex만 남긴다
 	 */
 	@Override
 	public PodFileWrite writeFile(long sessionId, String path, byte[] content, String baseSha256) {
 		String encoded = java.util.Base64.getMimeEncoder(76, new byte[] { '\n' }).encodeToString(content);
 		String[] lines = fileScript(sessionId, """
 				cd /app || exit 1
-				f='%s'
+				%s
 				base='%s'
 				cur=$(sha256sum "$f" 2>/dev/null | cut -d' ' -f1)
 				if [ -n "$base" ] && [ "$cur" != "$base" ]; then echo CHANGED; echo "$cur"; exit 0; fi
@@ -468,7 +470,8 @@ class KubernetesLabCluster implements LabCluster {
 				cat "$f.hackforge-tmp" > "$f" && rm "$f.hackforge-tmp"
 				echo OK
 				sha256sum "$f" | cut -d' ' -f1
-				""".formatted(path, baseSha256 == null ? "" : baseSha256, encoded)).split("\n");
+				""".formatted(pathVariable(path), baseSha256 == null ? "" : baseSha256.replaceAll("[^0-9a-fA-F]", ""),
+				encoded)).split("\n");
 		return new PodFileWrite(lines[0].strip().equals("CHANGED"), lines.length > 1 ? lines[1].strip() : "");
 	}
 
@@ -476,14 +479,23 @@ class KubernetesLabCluster implements LabCluster {
 	public PodFileRead revertFile(long sessionId, String path) {
 		return parseRead(fileScript(sessionId, """
 				cd /app || exit 1
-				f='%s'
+				%s
 				[ -f "/hackforge/original/$f" ] || { echo NOT_FOUND; exit 0; }
 				mkdir -p "$(dirname "$f")"
 				cp "/hackforge/original/$f" "$f"
 				echo OK
 				sha256sum "$f" | cut -d' ' -f1
 				base64 "$f"
-				""".formatted(path)));
+				""".formatted(pathVariable(path))));
+	}
+
+	/**
+	 * 스크립트의 {@code f=} 줄. 경로를 글자 그대로 넣지 않고 base64로 넣어 풀어 쓰므로 따옴표, 빈칸, 셸 특수 문자가 있어도
+	 * 명령이 되지 않는다. {@code ./}를 붙여 {@code -}로 시작하는 이름이 옵션으로 읽히지 않게 한다
+	 */
+	static String pathVariable(String path) {
+		String encoded = java.util.Base64.getEncoder().encodeToString(path.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		return "f=\"./$(printf %s '" + encoded + "' | base64 -d)\"";
 	}
 
 	/** 파일 작업 스크립트. 실패하면 서버 오류로 본다 */

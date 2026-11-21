@@ -36,8 +36,8 @@ public class LabFileService {
 	/** 문제가 수정 불가 파일을 정하지 않았을 때 */
 	static final String DEFAULT_READONLY = "compose.yaml Dockerfile Dockerfile.base **/Dockerfile **/Dockerfile.base **.sql";
 
-	/** 경로 조각에 쓸 수 있는 글자. 스크립트에 그대로 들어가므로 따옴표, 빈칸, 셸 특수 문자는 받지 않는다 */
-	private static final Pattern SEGMENT = Pattern.compile("[A-Za-z0-9._-]+");
+	/** 제어 문자(줄바꿈, 탭 등). 파일 목록을 한 줄에 하나씩 받아서 이름에 넣을 수 없다 */
+	private static final Pattern CONTROL = Pattern.compile("\\p{Cntrl}");
 
 	private final LabSessionService labSessionService;
 
@@ -121,11 +121,13 @@ public class LabFileService {
 				matches(readOnlyPatterns(lab), path));
 	}
 
-	/** {@code /app} 기준 상대 경로만. {@code ..}, 절대 경로, 빈 조각, 셸 특수 문자는 400 */
+	/**
+	 * {@code /app} 기준 상대 경로만. {@code ..}, 절대 경로, 빈 조각, 제어 문자는 400. 경로는 스크립트에 글자 그대로
+	 * 넣지 않으므로(base64) 한글, 빈칸, 셸 특수 문자는 받는다
+	 */
 	static void requireValidPath(String path) {
-		if (path == null || path.isEmpty() || path.length() > 500 || path.startsWith("/")
-				|| Arrays.stream(path.split("/", -1))
-					.anyMatch(s -> !SEGMENT.matcher(s).matches() || s.equals(".") || s.equals(".."))) {
+		if (path == null || path.isEmpty() || path.length() > 500 || path.startsWith("/") || CONTROL.matcher(path).find()
+				|| Arrays.stream(path.split("/", -1)).anyMatch(s -> s.isEmpty() || s.equals(".") || s.equals(".."))) {
 			throw new ApiException(ErrorCode.VALIDATION_FAILED);
 		}
 	}
