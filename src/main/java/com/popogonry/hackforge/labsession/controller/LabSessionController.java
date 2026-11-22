@@ -109,7 +109,7 @@ class LabSessionController {
 		Page<LabSession> sessions = result.sessions();
 		return new AdminLabSessionPageResponse(sessions.map(s -> {
 			User user = result.users().get(s.getUserId());
-			return new AdminLabSessionResponse(s.getUserId(), user.getNickname(), user.getEmail(), response(s));
+			return new AdminLabSessionResponse(s.getUserId(), user.getName(), user.getNickname(), user.getEmail(), response(s));
 		}).toList(), page, sessions.getSize(), sessions.getTotalElements(), sessions.getTotalPages());
 	}
 

@@ -158,7 +158,7 @@ class LabRecordsApiTests {
 		kim.get("/api/admin/labs").andExpect(status().isForbidden());
 	}
 
-	/** 기본은 종료 전 세션, ALL이면 종료한 세션까지. 최근 시작 순, 학습자 정보 */
+	/** 기본은 종료 전 세션, ALL이면 종료한 세션까지. 최근 시작 순, 학습자 정보(이름, 닉네임, 이메일) */
 	@Test
 	void adminListsSessions() throws Exception {
 		login("kim", "LEARNER");
@@ -172,6 +172,7 @@ class LabRecordsApiTests {
 		admin.get("/api/admin/labs")
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.items[*].session.id").value(contains((int) lee, (int) kim)))
+			.andExpect(jsonPath("$.items[0].userName").value("홍길동"))
 			.andExpect(jsonPath("$.items[0].userNickname").value("lee"))
 			.andExpect(jsonPath("$.items[0].userEmail").value("lee@example.com"))
 			.andExpect(jsonPath("$.totalItems").value(2))

@@ -3219,7 +3219,7 @@
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
                   "const item = pm.response.json().items.find(i => i.session.id === pm.collectionVariables.get('labId'));",
-                  "pm.test('9. 실습에서 끝낸 세션과 학습자', () => { pm.expect(item.session.status).to.eql('DELETED'); pm.expect(item.userEmail).to.eql(pm.collectionVariables.get('learnerEmail')); });"
+                  "pm.test('9. 실습에서 끝낸 세션과 학습자', () => { pm.expect(item.session.status).to.eql('DELETED'); pm.expect(item.userEmail).to.eql(pm.collectionVariables.get('learnerEmail')); pm.expect(item.userName).to.be.a('string').and.not.empty; });"
                 ]
               }
             }
@@ -3244,7 +3244,7 @@
                 }
               ]
             },
-            "description": "status=ALL이면 종료한 세션까지 최근 시작 순."
+            "description": "status=ALL이면 종료한 세션까지 최근 시작 순. 한 줄에 학습자 이름, 닉네임, 이메일."
           }
         },
         {
