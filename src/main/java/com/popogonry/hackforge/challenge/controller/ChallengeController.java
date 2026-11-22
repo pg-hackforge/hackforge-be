@@ -34,10 +34,10 @@ class ChallengeController {
 			@RequestParam(name = "category", required = false) List<String> categories,
 			@RequestParam(name = "difficulty", required = false) List<ChallengeDifficulty> difficulties,
 			@RequestParam(name = "myStatus", required = false) List<ChallengeMyStatus> myStatuses,
-			@RequestParam(defaultValue = "NEWEST") ChallengeSort sort,
+			@RequestParam(defaultValue = "NEWEST") ChallengeSort sort, @RequestParam(defaultValue = "false") boolean reverse,
 			@RequestParam(defaultValue = "1") @Min(1) int page, Authentication authentication) {
 		return challengeService.listChallenges(
-				new Filter(q, categories, difficulties, myStatuses, userId(authentication)), sort, page);
+				new Filter(q, categories, difficulties, myStatuses, userId(authentication)), sort, reverse, page);
 	}
 
 	@GetMapping("/api/challenges/{id}")

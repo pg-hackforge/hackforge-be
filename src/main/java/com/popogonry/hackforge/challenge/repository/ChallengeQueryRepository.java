@@ -64,9 +64,10 @@ public class ChallengeQueryRepository {
 
 	}
 
-	public List<ChallengeResponse> findPage(Filter filter, ChallengeSort sort, int limit, long offset) {
+	/** {@code reverse}면 그 정렬의 반대 방향. 동점은 반대 방향이어도 새로 추가된 순(ADR 028) */
+	public List<ChallengeResponse> findPage(Filter filter, ChallengeSort sort, boolean reverse, int limit, long offset) {
 		MapSqlParameterSource params = new MapSqlParameterSource().addValue("limit", limit).addValue("offset", offset);
-		String sql = COLUMNS + FROM + " where " + conditions(filter, true, true, true, params) + " order by " + order(sort)
+		String sql = COLUMNS + FROM + " where " + conditions(filter, true, true, true, params) + " order by " + order(sort, reverse)
 				+ " limit :limit offset :offset";
 		return namedParameterJdbcTemplate.query(sql, params, (rs, row) -> item(rs));
 	}
@@ -178,12 +179,13 @@ public class ChallengeQueryRepository {
 		return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
 	}
 
-	private static String order(ChallengeSort sort) {
+	private static String order(ChallengeSort sort, boolean reverse) {
+		String direction = reverse ? " desc, " : ", ";
 		return switch (sort) {
-			case NEWEST -> NEWEST;
+			case NEWEST -> reverse ? "c.created_at, c.id" : NEWEST;
 			case DIFFICULTY -> "array_position(array['INTRO', 'BEGINNER', 'INTERMEDIATE', 'ADVANCED']::varchar[],"
-					+ " c.difficulty), " + NEWEST;
-			case TIME -> "c.estimated_minutes, " + NEWEST;
+					+ " c.difficulty)" + direction + NEWEST;
+			case TIME -> "c.estimated_minutes" + direction + NEWEST;
 		};
 	}
 
