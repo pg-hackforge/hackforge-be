@@ -5,6 +5,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -44,6 +46,24 @@ public interface LabSessionRepository extends JpaRepository<LabSession, Long> {
 			where s.id = :id and s.userId = :userId and s.status in :from
 			""")
 	int terminate(long id, long userId, Collection<LabStatus> from, LabStatus terminating, LabEndReason reason, Instant now);
+
+	/** 관리자 강제 종료(ADR 026). 학습자 조건 없이 {@link #terminate}와 같다 */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("""
+			update LabSession s
+			set s.status = :terminating, s.endReason = :reason, s.prepStep = null, s.statusChangedAt = :now,
+			  s.version = s.version + 1
+			where s.id = :id and s.status in :from
+			""")
+	int terminateByAdmin(long id, Collection<LabStatus> from, LabStatus terminating, LabEndReason reason, Instant now);
+
+	/** 내 실습 기록. 최근 시작 순 */
+	Page<LabSession> findByUserIdOrderByCreatedAtDescIdDesc(long userId, Pageable pageable);
+
+	/** 관리자 세션 목록(ADR 026). 최근 시작 순 */
+	Page<LabSession> findByStatusNotInOrderByCreatedAtDescIdDesc(Collection<LabStatus> statuses, Pageable pageable);
+
+	Page<LabSession> findAllByOrderByCreatedAtDescIdDesc(Pageable pageable);
 
 	/**
 	 * {@link com.popogonry.hackforge.labsession.service.ActivityTracker}가 모은 활동 시각을 쓴다. {@code READY}이고 지금 값보다 최근일

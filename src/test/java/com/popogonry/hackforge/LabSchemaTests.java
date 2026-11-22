@@ -22,6 +22,9 @@ import com.popogonry.hackforge.challenge.TestChallenges;
 class LabSchemaTests {
 
 	@Autowired
+	org.springframework.transaction.support.TransactionTemplate transactionTemplate;
+
+	@Autowired
 	JdbcTemplate jdbcTemplate;
 
 	@Autowired
@@ -126,6 +129,25 @@ class LabSchemaTests {
 				"insert into verifications (session_id, type, status, started_at, defense_hints_revealed) values (?, 'DEFENSE', 'FAIL', now(), 4)",
 				id))
 			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	/** ADR 026. 상태가 바뀔 때만 기록한다. 주체는 transaction 설정에서 읽고, 없으면 SYSTEM */
+	@Test
+	void statusChangesAreRecordedByTrigger() {
+		insertSession("CREATING");
+		long id = sessionId();
+		jdbcTemplate.update("update lab_sessions set last_activity_at = now() where id = ?", id);
+		transactionTemplate.executeWithoutResult(tx -> {
+			jdbcTemplate.queryForObject("select set_config('hackforge.actor', 'ADMIN', true) || set_config('hackforge.actor_user_id', '7', true)", String.class);
+			jdbcTemplate.update("update lab_sessions set status = 'TERMINATING', end_reason = 'ADMIN' where id = ?", id);
+		});
+		jdbcTemplate.update("update lab_sessions set status = 'DELETED' where id = ?", id);
+
+		assertThat(jdbcTemplate.queryForList("""
+				select coalesce(from_status, '-') || '>' || to_status || ':' || actor || ':' || coalesce(actor_user_id::text, '-')
+				from session_events where session_id = ? order by id
+				""", String.class, id))
+			.containsExactly("->CREATING:SYSTEM:-", "CREATING>TERMINATING:ADMIN:7", "TERMINATING>DELETED:SYSTEM:-");
 	}
 
 	@Test

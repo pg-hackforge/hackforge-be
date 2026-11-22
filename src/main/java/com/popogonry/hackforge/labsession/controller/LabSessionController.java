@@ -4,7 +4,9 @@ import java.util.List;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -20,7 +23,12 @@ import com.popogonry.hackforge.labsession.cluster.LabProperties;
 import com.popogonry.hackforge.labsession.domain.LabSession;
 import com.popogonry.hackforge.labsession.domain.LabStage;
 import com.popogonry.hackforge.labsession.domain.LabStatus;
+import com.popogonry.hackforge.labsession.dto.AdminLabFilter;
+import com.popogonry.hackforge.labsession.dto.AdminLabSessionPageResponse;
+import com.popogonry.hackforge.labsession.dto.AdminLabSessionResponse;
 import com.popogonry.hackforge.labsession.dto.HintResponse;
+import com.popogonry.hackforge.labsession.dto.LabEventResponse;
+import com.popogonry.hackforge.labsession.dto.LabSessionPageResponse;
 import com.popogonry.hackforge.labsession.dto.LabHintsResponse;
 import com.popogonry.hackforge.labsession.dto.LabSessionResponse;
 import com.popogonry.hackforge.labsession.dto.RedeployResponse;
@@ -31,6 +39,7 @@ import com.popogonry.hackforge.labsession.dto.VerificationResponse;
 import com.popogonry.hackforge.labsession.dto.StartLabRequest;
 import com.popogonry.hackforge.labsession.service.ActivityTracker;
 import com.popogonry.hackforge.labsession.service.LabSessionService;
+import com.popogonry.hackforge.user.domain.User;
 import com.popogonry.hackforge.labsession.service.RedeployService;
 import com.popogonry.hackforge.labsession.service.VerificationService;
 
@@ -67,9 +76,48 @@ class LabSessionController {
 			.orElseGet(() -> ResponseEntity.noContent().build());
 	}
 
+	@GetMapping("/api/labs")
+	LabSessionPageResponse listLabs(@RequestParam(defaultValue = "1") @Min(1) int page, Authentication authentication) {
+		Page<LabSession> sessions = labSessionService.listLabs(userId(authentication), page);
+		return new LabSessionPageResponse(sessions.map(this::response).toList(), page, sessions.getSize(),
+				sessions.getTotalElements(), sessions.getTotalPages());
+	}
+
+	/** 관리자는 모든 세션을 조회한다(ADR 026) */
 	@GetMapping("/api/labs/{id}")
 	LabSessionResponse getLab(@PathVariable long id, Authentication authentication) {
-		return response(labSessionService.getLab(id, userId(authentication)));
+		return response(labSessionService.getLabForRead(id, userId(authentication), isAdmin(authentication)));
+	}
+
+	@GetMapping("/api/labs/{id}/events")
+	List<LabEventResponse> listLabEvents(@PathVariable long id, Authentication authentication) {
+		return labSessionService.listLabEvents(id, userId(authentication), isAdmin(authentication))
+			.stream()
+			.map(LabEventResponse::from)
+			.toList();
+	}
+
+	@GetMapping("/api/labs/{id}/solution")
+	SolutionResponse getSolution(@PathVariable long id, Authentication authentication) {
+		return labSessionService.getSolution(id, userId(authentication));
+	}
+
+	@GetMapping("/api/admin/labs")
+	AdminLabSessionPageResponse listAdminLabs(@RequestParam(defaultValue = "ACTIVE") AdminLabFilter status,
+			@RequestParam(defaultValue = "1") @Min(1) int page) {
+		LabSessionService.AdminLabPage result = labSessionService.listAdminLabs(status, page);
+		Page<LabSession> sessions = result.sessions();
+		return new AdminLabSessionPageResponse(sessions.map(s -> {
+			User user = result.users().get(s.getUserId());
+			return new AdminLabSessionResponse(s.getUserId(), user.getNickname(), user.getEmail(), response(s));
+		}).toList(), page, sessions.getSize(), sessions.getTotalElements(), sessions.getTotalPages());
+	}
+
+	/** 학습자 종료와 같이 {@code TERMINATING}으로 바꾸고 응답한다. 종료 사유 {@code ADMIN}(ADR 026) */
+	@PostMapping("/api/admin/labs/{id}/terminate")
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	LabSessionResponse terminateLab(@PathVariable long id, Authentication authentication) {
+		return response(labSessionService.terminateLab(id, userId(authentication)));
 	}
 
 	/** {@code TERMINATING}으로 바꾸고 응답한다. 환경은 reconciler가 비동기로 지운다 */
@@ -106,7 +154,7 @@ class LabSessionController {
 
 	@GetMapping("/api/labs/{id}/verifications")
 	List<VerificationResponse> listVerifications(@PathVariable long id, Authentication authentication) {
-		return verificationService.listVerifications(id, userId(authentication))
+		return verificationService.listVerifications(id, userId(authentication), isAdmin(authentication))
 			.stream()
 			.map(VerificationResponse::from)
 			.toList();
@@ -115,7 +163,8 @@ class LabSessionController {
 	@GetMapping("/api/labs/{id}/verifications/{verificationId}")
 	VerificationResponse getVerification(@PathVariable long id, @PathVariable long verificationId,
 			Authentication authentication) {
-		return VerificationResponse.from(verificationService.getVerification(id, verificationId, userId(authentication)));
+		return VerificationResponse
+			.from(verificationService.getVerification(id, verificationId, userId(authentication), isAdmin(authentication)));
 	}
 
 	@PostMapping("/api/labs/{id}/attack-hints")
@@ -125,7 +174,7 @@ class LabSessionController {
 
 	@GetMapping("/api/labs/{id}/hints")
 	LabHintsResponse listLabHints(@PathVariable long id, Authentication authentication) {
-		return labSessionService.listLabHints(id, userId(authentication));
+		return labSessionService.listLabHints(id, userId(authentication), isAdmin(authentication));
 	}
 
 	@PostMapping("/api/labs/{id}/defense-hints")
@@ -142,7 +191,7 @@ class LabSessionController {
 
 	@GetMapping("/api/labs/{id}/redeploys")
 	List<RedeployResponse> listRedeploys(@PathVariable long id, Authentication authentication) {
-		return redeployService.listRedeploys(id, userId(authentication))
+		return redeployService.listRedeploys(id, userId(authentication), isAdmin(authentication))
 			.stream()
 			.map(r -> RedeployResponse.from(r, false))
 			.toList();
@@ -150,7 +199,8 @@ class LabSessionController {
 
 	@GetMapping("/api/labs/{id}/redeploys/{redeployId}")
 	RedeployResponse getRedeploy(@PathVariable long id, @PathVariable long redeployId, Authentication authentication) {
-		return RedeployResponse.from(redeployService.getRedeploy(id, redeployId, userId(authentication)), true);
+		return RedeployResponse
+			.from(redeployService.getRedeploy(id, redeployId, userId(authentication), isAdmin(authentication)), true);
 	}
 
 	@PostMapping("/api/labs/{id}/reset")
@@ -188,6 +238,11 @@ class LabSessionController {
 
 	private static long userId(Authentication authentication) {
 		return Long.parseLong(authentication.getName());
+	}
+
+	/** 역할은 로그인할 때 정해진다(역할을 바꾸면 다시 로그인, ADR 011) */
+	private static boolean isAdmin(Authentication authentication) {
+		return authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
 	}
 
 }

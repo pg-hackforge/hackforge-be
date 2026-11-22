@@ -3,10 +3,15 @@ package com.popogonry.hackforge.labsession.service;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,19 +19,24 @@ import com.popogonry.hackforge.challenge.domain.Challenge;
 import com.popogonry.hackforge.challenge.repository.ChallengeRepository;
 import com.popogonry.hackforge.labsession.cluster.LabProperties;
 import com.popogonry.hackforge.labsession.domain.LabEndReason;
+import com.popogonry.hackforge.labsession.domain.LabEventActor;
 import com.popogonry.hackforge.labsession.domain.LabSession;
 import com.popogonry.hackforge.labsession.domain.LabStage;
 import com.popogonry.hackforge.labsession.domain.LabStatus;
+import com.popogonry.hackforge.labsession.domain.SessionEvent;
 import com.popogonry.hackforge.labsession.domain.VerificationStatus;
 import com.popogonry.hackforge.labsession.domain.VerificationType;
+import com.popogonry.hackforge.labsession.dto.AdminLabFilter;
 import com.popogonry.hackforge.labsession.dto.HintResponse;
 import com.popogonry.hackforge.labsession.dto.LabHintsResponse;
 import com.popogonry.hackforge.labsession.dto.SolutionResponse;
 import com.popogonry.hackforge.labsession.repository.LabHintRepository;
 import com.popogonry.hackforge.labsession.repository.LabSessionRepository;
+import com.popogonry.hackforge.labsession.repository.SessionEventRepository;
 import com.popogonry.hackforge.labsession.repository.VerificationRepository;
 import com.popogonry.hackforge.user.domain.User;
 import com.popogonry.hackforge.user.domain.UserStatus;
+import com.popogonry.hackforge.user.repository.UserRepository;
 import com.popogonry.hackforge.user.service.UserService;
 import com.popogonry.hackforge.web.ApiException;
 import com.popogonry.hackforge.web.ErrorCode;
@@ -60,6 +70,13 @@ public class LabSessionService {
 
 	private final VerificationRepository verificationRepository;
 
+	private final SessionEventRepository sessionEventRepository;
+
+	private final UserRepository userRepository;
+
+	/** 세션 목록 한 페이지 크기(문제 목록과 같음) */
+	public static final int PAGE_SIZE = 20;
+
 	/**
 	 * 승인 상태는 로그인 세션이 아니라 DB에서 읽는다(ADR 011). 정원과 학습자당 1세션은 advisory lock을 잡고 센다.
 	 * 진행 중 세션이 있는 학습자는 정원이 차 있어도 409로 기존 세션을 안내받는다.
@@ -81,6 +98,7 @@ public class LabSessionService {
 		}
 		try {
 			// lock을 거치지 않은 insert가 생겨도 partial unique index가 학습자당 1세션을 지킨다
+			sessionEventRepository.setActor(LabEventActor.LEARNER.name(), String.valueOf(userId));
 			return labSessionRepository.saveAndFlush(new LabSession(userId, challenge, clock.instant()));
 		}
 		catch (DataIntegrityViolationException e) {
@@ -95,8 +113,56 @@ public class LabSessionService {
 	/** 상태만 바꾸고 응답한다. 환경 삭제는 reconciler가 한다. 이미 종료 중이거나 끝났으면 그대로 둔다 */
 	@Transactional
 	public LabSession endLab(long id, long userId) {
+		sessionEventRepository.setActor(LabEventActor.LEARNER.name(), String.valueOf(userId));
 		labSessionRepository.terminate(id, userId, ENDABLE, LabStatus.TERMINATING, LabEndReason.USER, clock.instant());
 		return getLab(id, userId);
+	}
+
+	/** 관리자 강제 종료(ADR 026). 이미 종료 중이거나 끝났으면 바꾸지 않고 지금 상태를 반환한다 */
+	@Transactional
+	public LabSession terminateLab(long id, long adminId) {
+		if (!labSessionRepository.existsById(id)) {
+			throw new ApiException(ErrorCode.LAB_NOT_FOUND);
+		}
+		sessionEventRepository.setActor(LabEventActor.ADMIN.name(), String.valueOf(adminId));
+		labSessionRepository.terminateByAdmin(id, ENDABLE, LabStatus.TERMINATING, LabEndReason.ADMIN, clock.instant());
+		return labSessionRepository.findById(id).orElseThrow();
+	}
+
+	/** 내 실습 기록. 종료한 세션도 최근 순으로(ADR 026) */
+	public Page<LabSession> listLabs(long userId, int page) {
+		return labSessionRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId, PageRequest.of(page - 1, PAGE_SIZE));
+	}
+
+	/** 관리자 세션 목록과 그 학습자(ADR 026) */
+	public record AdminLabPage(Page<LabSession> sessions, Map<Long, User> users) {
+	}
+
+	public AdminLabPage listAdminLabs(AdminLabFilter filter, int page) {
+		PageRequest pageRequest = PageRequest.of(page - 1, PAGE_SIZE);
+		Page<LabSession> sessions = filter == AdminLabFilter.ALL
+				? labSessionRepository.findAllByOrderByCreatedAtDescIdDesc(pageRequest)
+				: labSessionRepository.findByStatusNotInOrderByCreatedAtDescIdDesc(LabStatus.ENDED, pageRequest);
+		Map<Long, User> users = userRepository
+			.findAllById(sessions.stream().map(LabSession::getUserId).distinct().toList())
+			.stream()
+			.collect(Collectors.toMap(User::getId, Function.identity()));
+		return new AdminLabPage(sessions, users);
+	}
+
+	/** 상태 기록(ADR 026). 관리자는 모든 세션 */
+	public List<SessionEvent> listLabEvents(long id, long userId, boolean admin) {
+		getLabForRead(id, userId, admin);
+		return sessionEventRepository.findBySessionIdOrderByIdAsc(id);
+	}
+
+	/** 이 세션에서 연 해답을 다시 준다. 상태와 상관없이, 세션 주인만(ADR 026) */
+	public SolutionResponse getSolution(long id, long userId) {
+		LabSession lab = getLab(id, userId);
+		if (lab.getSolutionViewedAt() == null) {
+			throw new ApiException(ErrorCode.SOLUTION_LOCKED);
+		}
+		return new SolutionResponse(lab.getChallenge().getSolution(), lab.getSolutionViewedAt());
 	}
 
 	/** [계속하기]. 남의 세션과 없는 세션은 404, {@code READY}가 아니면 409 */
@@ -168,9 +234,9 @@ public class LabSessionService {
 		return new HintResponse(stage, position, labHintRepository.content(challengeId, stage, position), now);
 	}
 
-	/** 공개한 힌트는 단계와 상관없이 다시 볼 수 있다 */
-	public LabHintsResponse listLabHints(long id, long userId) {
-		LabSession lab = getLab(id, userId);
+	/** 공개한 힌트는 단계와 상관없이 다시 볼 수 있다. 관리자는 모든 세션(ADR 026) */
+	public LabHintsResponse listLabHints(long id, long userId, boolean admin) {
+		LabSession lab = getLabForRead(id, userId, admin);
 		long challengeId = lab.getChallenge().getId();
 		return new LabHintsResponse(labHintRepository.countHints(challengeId, LabStage.ATTACK),
 				labHintRepository.countHints(challengeId, LabStage.DEFENSE), labHintRepository.findRevealed(id, challengeId));
@@ -203,6 +269,12 @@ public class LabSessionService {
 	public LabSession getLab(long id, long userId) {
 		return labSessionRepository.findByIdAndUserId(id, userId)
 			.orElseThrow(() -> new ApiException(ErrorCode.LAB_NOT_FOUND));
+	}
+
+	/** 조회만 하는 요청. 관리자는 모든 세션을 본다(ADR 026). 바꾸는 요청은 {@link #getLab}으로 주인만 */
+	public LabSession getLabForRead(long id, long userId, boolean admin) {
+		return admin ? labSessionRepository.findById(id).orElseThrow(() -> new ApiException(ErrorCode.LAB_NOT_FOUND))
+				: getLab(id, userId);
 	}
 
 }
