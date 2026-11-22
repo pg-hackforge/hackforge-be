@@ -3039,6 +3039,316 @@
           }
         },
         {
+          "name": "내 실습 기록",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('방금 끝낸 세션이 맨 앞', () => pm.expect(pm.response.json().items[0].id).to.eql(pm.collectionVariables.get('labId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs"
+              ]
+            },
+            "description": "내 세션을 최근 시작 순으로 20개씩 준다. 종료한 세션도 포함한다(ADR 026)."
+          }
+        },
+        {
+          "name": "상태 기록",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const e = pm.response.json();",
+                  "pm.test('생성은 이전 상태 null, 학습자 요청', () => { pm.expect(e[0].fromStatus).to.eql(null); pm.expect(e[0].toStatus).to.eql('CREATING'); pm.expect(e[0].actor).to.eql('LEARNER'); });",
+                  "pm.test('마지막은 DELETED', () => pm.expect(e[e.length - 1].toStatus).to.eql('DELETED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "events"
+              ]
+            },
+            "description": "세션 상태가 바뀐 기록을 오래된 순으로 준다. 주체는 학습자 요청 LEARNER, 관리자 요청 ADMIN, 서버(reconciler) SYSTEM."
+          }
+        },
+        {
+          "name": "로그아웃",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. 관리자 세션 관리",
+      "description": "관리자가 세션 목록을 보고 강제 종료하고, 남의 세션 기록을 본다(ADR 026). \"9. 실습\"에서 끝낸 세션(labId)을 쓴다. 관리자는 조회 API를 모든 세션에 쓸 수 있지만 바꾸는 요청은 세션 주인만 받는다.",
+      "item": [
+        {
+          "name": "관리자 로그인",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('.role = ADMIN', () => pm.expect(pm.response.json().role).to.eql(\"ADMIN\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "세션 목록 (진행 중)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('종료한 세션은 없음', () => pm.response.json().items.forEach(i => pm.expect(['DELETED', 'FAILED']).to.not.include(i.session.status)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/labs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "labs"
+              ]
+            },
+            "description": "기본은 종료 전 세션. 한 줄에 학습자(닉네임, 이메일)와 세션."
+          }
+        },
+        {
+          "name": "세션 목록 (전체)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const item = pm.response.json().items.find(i => i.session.id === pm.collectionVariables.get('labId'));",
+                  "pm.test('9. 실습에서 끝낸 세션과 학습자', () => { pm.expect(item.session.status).to.eql('DELETED'); pm.expect(item.userEmail).to.eql(pm.collectionVariables.get('learnerEmail')); pm.expect(item.userName).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/labs?status=ALL",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "labs"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "ALL"
+                }
+              ]
+            },
+            "description": "status=ALL이면 종료한 세션까지 최근 시작 순. 한 줄에 학습자 이름, 닉네임, 이메일."
+          }
+        },
+        {
+          "name": "남의 세션 상태 기록",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('기록이 있음', () => pm.expect(pm.response.json()).to.not.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "events"
+              ]
+            },
+            "description": "관리자는 학습자와 같은 조회 API로 모든 세션의 기록(세션, 검증, 재배포, 힌트, 상태 기록)을 본다."
+          }
+        },
+        {
+          "name": "남의 세션 검증 기록",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/labs/{{labId}}/verifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "labs",
+                "{{labId}}",
+                "verifications"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "강제 종료 (이미 끝난 세션)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.test('이미 끝나서 그대로 DELETED, USER', () => { pm.expect(pm.response.json().status).to.eql('DELETED'); pm.expect(pm.response.json().endReason).to.eql('USER'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/labs/{{labId}}/terminate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "labs",
+                "{{labId}}",
+                "terminate"
+              ]
+            },
+            "description": "진행 중 세션이면 TERMINATING(ADMIN)으로 바꾸고 열린 터미널이 닫힌다. 이미 종료 중이거나 끝났으면 지금 상태를 그대로 준다."
+          }
+        },
+        {
           "name": "로그아웃",
           "event": [
             {

@@ -216,7 +216,7 @@ class DefenseClusterTests {
 	private Verification waitUntilVerified(long verificationId) throws InterruptedException {
 		Instant deadline = Instant.now().plus(Duration.ofMinutes(3));
 		while (true) {
-			Verification verification = verificationService.getVerification(id, verificationId, userId);
+			Verification verification = verificationService.getVerification(id, verificationId, userId, false);
 			if (verification.getStatus() != VerificationStatus.RUNNING) {
 				return verification;
 			}
@@ -253,7 +253,7 @@ class DefenseClusterTests {
 	private Redeploy waitUntilDone(long redeployId) throws InterruptedException {
 		Instant deadline = Instant.now().plus(Duration.ofMinutes(4));
 		while (true) {
-			Redeploy redeploy = redeployService.getRedeploy(id, redeployId, userId);
+			Redeploy redeploy = redeployService.getRedeploy(id, redeployId, userId, false);
 			if (redeploy.getStatus() != RedeployStatus.RUNNING) {
 				return redeploy;
 			}

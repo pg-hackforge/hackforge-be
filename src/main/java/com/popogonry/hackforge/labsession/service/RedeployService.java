@@ -17,6 +17,8 @@ import com.popogonry.hackforge.labsession.domain.Redeploy;
 import com.popogonry.hackforge.labsession.domain.RedeployKind;
 import com.popogonry.hackforge.labsession.domain.ResetScope;
 import com.popogonry.hackforge.labsession.repository.LabSessionRepository;
+import com.popogonry.hackforge.labsession.repository.SessionEventRepository;
+import com.popogonry.hackforge.labsession.domain.LabEventActor;
 import com.popogonry.hackforge.labsession.repository.RedeployRepository;
 import com.popogonry.hackforge.web.ApiException;
 import com.popogonry.hackforge.web.ErrorCode;
@@ -46,6 +48,8 @@ public class RedeployService {
 	private final LabCluster labCluster;
 
 	private final ActivityTracker activityTracker;
+
+	private final SessionEventRepository sessionEventRepository;
 
 	private final Clock clock;
 
@@ -79,18 +83,20 @@ public class RedeployService {
 			return new ResetResult(labSessionService.getLab(id, userId), redeploy);
 		}
 		labCluster.deletePod(id);
+		sessionEventRepository.setActor(LabEventActor.LEARNER.name(), String.valueOf(userId));
 		labSessionRepository.recreate(id, LabStatus.READY, LabStatus.CREATING,
 				LabPrepStep.SPACE, clock.instant());
 		return new ResetResult(labSessionService.getLab(id, userId), null);
 	}
 
-	public List<Redeploy> listRedeploys(long id, long userId) {
-		labSessionService.getLab(id, userId);
+	/** 관리자는 모든 세션의 기록을 본다(ADR 026) */
+	public List<Redeploy> listRedeploys(long id, long userId, boolean admin) {
+		labSessionService.getLabForRead(id, userId, admin);
 		return redeployRepository.findBySessionIdOrderByStartedAtDescIdDesc(id);
 	}
 
-	public Redeploy getRedeploy(long id, long redeployId, long userId) {
-		labSessionService.getLab(id, userId);
+	public Redeploy getRedeploy(long id, long redeployId, long userId, boolean admin) {
+		labSessionService.getLabForRead(id, userId, admin);
 		return redeployRepository.findByIdAndSessionId(redeployId, id)
 			.orElseThrow(() -> new ApiException(ErrorCode.REDEPLOY_NOT_FOUND));
 	}

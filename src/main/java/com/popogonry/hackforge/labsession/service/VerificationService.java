@@ -109,13 +109,14 @@ public class VerificationService {
 		return verification;
 	}
 
-	public List<Verification> listVerifications(long labId, long userId) {
-		labSessionService.getLab(labId, userId);
+	/** 관리자는 모든 세션의 검증을 본다(ADR 026) */
+	public List<Verification> listVerifications(long labId, long userId, boolean admin) {
+		labSessionService.getLabForRead(labId, userId, admin);
 		return verificationRepository.findBySessionIdOrderByStartedAtDescIdDesc(labId);
 	}
 
-	public Verification getVerification(long labId, long verificationId, long userId) {
-		labSessionService.getLab(labId, userId);
+	public Verification getVerification(long labId, long verificationId, long userId, boolean admin) {
+		labSessionService.getLabForRead(labId, userId, admin);
 		return verificationRepository.findByIdAndSessionId(verificationId, labId)
 			.orElseThrow(() -> new ApiException(ErrorCode.VERIFICATION_NOT_FOUND));
 	}
