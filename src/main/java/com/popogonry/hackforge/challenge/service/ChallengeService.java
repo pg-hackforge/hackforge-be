@@ -7,7 +7,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.popogonry.hackforge.challenge.domain.ChallengeSort;
 import com.popogonry.hackforge.challenge.dto.ChallengeDetailResponse;
+import com.popogonry.hackforge.challenge.dto.CategoryProgressResponse;
 import com.popogonry.hackforge.challenge.dto.ChallengeFacetsResponse;
+import com.popogonry.hackforge.challenge.dto.MyProgressResponse;
+import com.popogonry.hackforge.challenge.dto.MyStatusCountResponse;
 import com.popogonry.hackforge.challenge.dto.ChallengePageResponse;
 import com.popogonry.hackforge.challenge.dto.DifficultyCountResponse;
 import com.popogonry.hackforge.challenge.repository.ChallengeQueryRepository;
@@ -35,15 +38,29 @@ public class ChallengeService {
 			.stream()
 			.map(e -> new DifficultyCountResponse(e.getKey(), e.getValue()))
 			.toList();
+		List<MyStatusCountResponse> myStatuses = challengeQueryRepository.countByMyStatus(filter)
+			.entrySet()
+			.stream()
+			.map(e -> new MyStatusCountResponse(e.getKey(), e.getValue()))
+			.toList();
 		return new ChallengePageResponse(
 				challengeQueryRepository.findPage(filter, sort, PAGE_SIZE, (long) (page - 1) * PAGE_SIZE), page,
 				PAGE_SIZE, totalItems, totalPages,
-				new ChallengeFacetsResponse(challengeQueryRepository.countByCategory(filter), difficulties));
+				new ChallengeFacetsResponse(challengeQueryRepository.countByCategory(filter), difficulties, myStatuses));
 	}
 
-	public ChallengeDetailResponse getChallenge(long id) {
-		return challengeQueryRepository.findDetail(id)
+	public ChallengeDetailResponse getChallenge(long id, long userId) {
+		return challengeQueryRepository.findDetail(id, userId)
 			.orElseThrow(() -> new ApiException(ErrorCode.CHALLENGE_NOT_FOUND));
+	}
+
+	/** 홈의 내 진행(ADR 027) */
+	public MyProgressResponse getMyProgress(long userId) {
+		List<ChallengeQueryRepository.CategoryProgress> categories = challengeQueryRepository.countProgressByCategory(userId);
+		return new MyProgressResponse(categories.stream().mapToLong(ChallengeQueryRepository.CategoryProgress::total).sum(),
+				categories.stream().mapToLong(ChallengeQueryRepository.CategoryProgress::completed).sum(),
+				categories.stream().mapToLong(ChallengeQueryRepository.CategoryProgress::unfinished).sum(),
+				categories.stream().map(c -> new CategoryProgressResponse(c.key(), c.name(), c.total(), c.completed())).toList());
 	}
 
 }
