@@ -208,6 +208,27 @@ class ChallengeApiTests {
 					contains("beginner-short", "advanced-short", "intro-mid", "intro-long")));
 	}
 
+	/** ADR 028. reverse면 반대 방향(오래된 순, 어려운 순, 긴 순). 동점은 그대로 새로 추가된 순 */
+	@Test
+	void reverseSortsTheOtherWayKeepingNewestForTies() throws Exception {
+		add("advanced-short", "a", "sqli", "ADVANCED", 10, days(4));
+		add("intro-long", "b", "sqli", "INTRO", 60, days(3));
+		add("beginner-short", "c", "sqli", "BEGINNER", 10, days(2));
+		add("intro-mid", "d", "sqli", "INTRO", 30, days(1));
+		ApiClient client = login("APPROVED");
+
+		client.get("/api/challenges", "reverse", "true")
+			.andExpect(jsonPath("$.items[*].slug",
+					contains("advanced-short", "intro-long", "beginner-short", "intro-mid")));
+		client.get("/api/challenges", "sort", "DIFFICULTY", "reverse", "true")
+			.andExpect(jsonPath("$.items[*].slug",
+					contains("advanced-short", "beginner-short", "intro-mid", "intro-long")));
+		client.get("/api/challenges", "sort", "TIME", "reverse", "true")
+			.andExpect(jsonPath("$.items[*].slug",
+					contains("intro-long", "intro-mid", "beginner-short", "advanced-short")));
+		client.get("/api/challenges", "reverse", "maybe").andExpect(status().isBadRequest());
+	}
+
 	/** 20개씩. 범위를 넘은 페이지는 빈 목록이고 개수는 그대로 */
 	@Test
 	void pagesByTwenty() throws Exception {

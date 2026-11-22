@@ -30,7 +30,7 @@ public class ChallengeService {
 	private final ChallengeQueryRepository challengeQueryRepository;
 
 	/** 범위를 넘은 페이지는 빈 목록이고 개수는 그대로다 */
-	public ChallengePageResponse listChallenges(Filter filter, ChallengeSort sort, int page) {
+	public ChallengePageResponse listChallenges(Filter filter, ChallengeSort sort, boolean reverse, int page) {
 		long totalItems = challengeQueryRepository.count(filter);
 		int totalPages = (int) ((totalItems + PAGE_SIZE - 1) / PAGE_SIZE);
 		List<DifficultyCountResponse> difficulties = challengeQueryRepository.countByDifficulty(filter)
@@ -44,7 +44,7 @@ public class ChallengeService {
 			.map(e -> new MyStatusCountResponse(e.getKey(), e.getValue()))
 			.toList();
 		return new ChallengePageResponse(
-				challengeQueryRepository.findPage(filter, sort, PAGE_SIZE, (long) (page - 1) * PAGE_SIZE), page,
+				challengeQueryRepository.findPage(filter, sort, reverse, PAGE_SIZE, (long) (page - 1) * PAGE_SIZE), page,
 				PAGE_SIZE, totalItems, totalPages,
 				new ChallengeFacetsResponse(challengeQueryRepository.countByCategory(filter), difficulties, myStatuses));
 	}
