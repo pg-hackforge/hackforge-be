@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.10.0
+  version: 0.11.0
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -489,6 +489,14 @@ paths:
           description: 생략하면 `NEWEST`
           schema:
             $ref: '#/components/schemas/ChallengeSort'
+        - name: reverse
+          in: query
+          required: false
+          description: >-
+            `true`면 그 정렬의 반대 방향(오래된 순, 어려운 순, 긴 순). 동점은 반대 방향이어도 새로 추가된 순이다
+            (hackforge-docs ADR 028). 생략하면 `false`
+          schema:
+            type: boolean
         - name: page
           in: query
           required: false
