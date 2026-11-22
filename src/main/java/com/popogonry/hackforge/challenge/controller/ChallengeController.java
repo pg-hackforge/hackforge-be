@@ -5,15 +5,18 @@ import java.util.List;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.popogonry.hackforge.challenge.domain.ChallengeDifficulty;
+import com.popogonry.hackforge.challenge.domain.ChallengeMyStatus;
 import com.popogonry.hackforge.challenge.domain.ChallengeSort;
 import com.popogonry.hackforge.challenge.dto.ChallengeDetailResponse;
 import com.popogonry.hackforge.challenge.dto.ChallengePageResponse;
+import com.popogonry.hackforge.challenge.dto.MyProgressResponse;
 import com.popogonry.hackforge.challenge.repository.ChallengeQueryRepository.Filter;
 import com.popogonry.hackforge.challenge.service.ChallengeService;
 
@@ -30,14 +33,26 @@ class ChallengeController {
 	ChallengePageResponse listChallenges(@RequestParam(required = false) @Size(max = 100) String q,
 			@RequestParam(name = "category", required = false) List<String> categories,
 			@RequestParam(name = "difficulty", required = false) List<ChallengeDifficulty> difficulties,
+			@RequestParam(name = "myStatus", required = false) List<ChallengeMyStatus> myStatuses,
 			@RequestParam(defaultValue = "NEWEST") ChallengeSort sort,
-			@RequestParam(defaultValue = "1") @Min(1) int page) {
-		return challengeService.listChallenges(new Filter(q, categories, difficulties), sort, page);
+			@RequestParam(defaultValue = "1") @Min(1) int page, Authentication authentication) {
+		return challengeService.listChallenges(
+				new Filter(q, categories, difficulties, myStatuses, userId(authentication)), sort, page);
 	}
 
 	@GetMapping("/api/challenges/{id}")
-	ChallengeDetailResponse getChallenge(@PathVariable long id) {
-		return challengeService.getChallenge(id);
+	ChallengeDetailResponse getChallenge(@PathVariable long id, Authentication authentication) {
+		return challengeService.getChallenge(id, userId(authentication));
+	}
+
+	/** 홈의 내 진행. 문제별 내 상태와 같은 규칙으로 센다(ADR 027) */
+	@GetMapping("/api/me/progress")
+	MyProgressResponse getMyProgress(Authentication authentication) {
+		return challengeService.getMyProgress(userId(authentication));
+	}
+
+	private static long userId(Authentication authentication) {
+		return Long.parseLong(authentication.getName());
 	}
 
 }
