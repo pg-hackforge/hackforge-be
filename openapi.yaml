@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.9.1
+  version: 0.10.0
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -179,6 +179,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api/me/progress:
+    get:
+      tags: [lab]
+      summary: 내 진행 요약
+      description: >-
+        홈의 내 진행(hackforge-docs ADR 027). 전체 문제 수, 완료한 문제 수, 끝내지 못한 문제 수, 분류별 전체·완료 수.
+        문제별 상태는 `ChallengeMyStatus`와 같은 규칙으로 센다
+      operationId: getMyProgress
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: 내 진행 요약
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyProgressResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
   /api/me/password:
@@ -454,6 +473,16 @@ paths:
             type: array
             items:
               $ref: '#/components/schemas/ChallengeDifficulty'
+        - name: myStatus
+          in: query
+          required: false
+          description: 내 상태(hackforge-docs ADR 027). 여러 번 넣을 수 있다
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ChallengeMyStatus'
         - name: sort
           in: query
           required: false
@@ -1555,7 +1584,7 @@ components:
     ChallengeResponse:
       type: object
       description: 문제 목록 항목. 설명 전문, 힌트, 해답, 검증 스크립트는 넣지 않는다
-      required: [id, slug, title, summary, category, difficulty, estimatedMinutes, isNew]
+      required: [id, slug, title, summary, category, difficulty, estimatedMinutes, isNew, myStatus]
       properties:
         id:
           type: integer
@@ -1580,6 +1609,8 @@ components:
         isNew:
           type: boolean
           description: 처음 등록한 지 14일 안이면 true
+        myStatus:
+          $ref: '#/components/schemas/ChallengeMyStatus'
     ChallengeDetailResponse:
       description: 문제 하나. 힌트, 해답, 검증 스크립트는 넣지 않는다
       allOf:
@@ -1620,8 +1651,13 @@ components:
         필터별 문제 수. 개수가 0인 항목도 넣는다.
         한 조건의 개수는 그 조건을 뺀 나머지 조건(검색어 포함)을 적용해 센다.
         예를 들어 난이도 `INTRO`를 골랐어도 분류별 개수는 입문 문제만, 난이도별 개수는 난이도 조건 없이 센다
-      required: [categories, difficulties]
+      required: [categories, difficulties, myStatuses]
       properties:
+        myStatuses:
+          type: array
+          description: '`NOT_STARTED`, `UNFINISHED`, `COMPLETED` 순서'
+          items:
+            $ref: '#/components/schemas/MyStatusCountResponse'
         categories:
           type: array
           description: 분류 표시 순서
@@ -1632,6 +1668,53 @@ components:
           description: 쉬운 순서
           items:
             $ref: '#/components/schemas/DifficultyCountResponse'
+    ChallengeMyStatus:
+      type: string
+      description: >-
+        내 상태(hackforge-docs ADR 027). `COMPLETED` 내 세션 중 하나라도 실습을 완료함(첫 방어 검증 PASS),
+        `UNFINISHED` 세션은 있지만 완료한 것이 없음, `NOT_STARTED` 세션이 없음
+      enum: [NOT_STARTED, UNFINISHED, COMPLETED]
+    MyStatusCountResponse:
+      type: object
+      required: [myStatus, count]
+      properties:
+        myStatus:
+          $ref: '#/components/schemas/ChallengeMyStatus'
+        count:
+          type: integer
+          format: int64
+    MyProgressResponse:
+      type: object
+      required: [totalChallenges, completed, unfinished, categories]
+      properties:
+        totalChallenges:
+          type: integer
+          format: int64
+        completed:
+          type: integer
+          format: int64
+        unfinished:
+          type: integer
+          format: int64
+        categories:
+          type: array
+          description: 분류 표시 순서. 문제가 없는 분류도 넣는다
+          items:
+            $ref: '#/components/schemas/CategoryProgressResponse'
+    CategoryProgressResponse:
+      type: object
+      required: [key, name, total, completed]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+          format: int64
+        completed:
+          type: integer
+          format: int64
     CategoryCountResponse:
       type: object
       required: [key, name, count]
