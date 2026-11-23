@@ -37,6 +37,12 @@ class LabFileController {
 		return labFileService.getLabFile(id, path, userId(authentication));
 	}
 
+	@GetMapping("/api/labs/{id}/files/original")
+	LabFileResponse getOriginalLabFile(@PathVariable long id, @RequestParam String path,
+			Authentication authentication) {
+		return labFileService.getOriginalLabFile(id, path, userId(authentication));
+	}
+
 	@PutMapping("/api/labs/{id}/files/content")
 	LabFileResponse saveLabFile(@PathVariable long id, @RequestParam String path,
 			@Valid @RequestBody SaveLabFileRequest body, Authentication authentication) {

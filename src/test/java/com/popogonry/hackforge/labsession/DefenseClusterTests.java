@@ -113,7 +113,7 @@ class DefenseClusterTests {
 
 		// 파일 목록과 기본 수정 불가(compose.yaml)
 		assertThat(labFileService.listLabFiles(id, userId))
-			.contains(new LabFileEntry("compose.yaml", compose().getBytes(StandardCharsets.UTF_8).length, true, true));
+			.contains(new LabFileEntry("compose.yaml", compose().getBytes(StandardCharsets.UTF_8).length, true, true, false));
 		assertThatThrownBy(() -> labFileService.saveLabFile(id, "compose.yaml", "x", null, userId))
 			.isInstanceOfSatisfying(ApiException.class, ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FILE_READ_ONLY));
 
@@ -154,6 +154,11 @@ class DefenseClusterTests {
 				"ports: [\"8080:80\"]\n    volumes: [\"./web:/usr/share/nginx/html:ro\"]");
 		assertThat(changed).isNotEqualTo(original);
 		labCluster.writeFile(id, "compose.yaml", changed.getBytes(StandardCharsets.UTF_8), null);
+		// 원본 읽기와 modified(ADR 029): 고친 파일과 새 파일은 modified, 원본은 그대로
+		assertThat(labFileService.getOriginalLabFile(id, "compose.yaml", userId).content()).isEqualTo(original);
+		assertThat(labFileService.listLabFiles(id, userId)).filteredOn(f -> f.path().equals("compose.yaml"))
+			.singleElement()
+			.satisfies(f -> assertThat(f.modified()).isTrue());
 		// 서비스 DB에 표시를 남긴다. 서비스 초기화는 volume까지 지운다
 		assertThat(script("docker compose exec -T db psql -U postgres -c 'create table hf_marker (x int)'").exitCode())
 			.isZero();
@@ -166,6 +171,8 @@ class DefenseClusterTests {
 		// 파일 하나 되돌리기. 원본에 없는 파일은 404
 		assertThat(new String(labCluster.revertFile(id, "compose.yaml").content(), StandardCharsets.UTF_8))
 			.isEqualTo(original);
+		assertThat(labFileService.listLabFiles(id, userId)).allSatisfy(
+				f -> assertThat(f.modified()).as(f.path()).isEqualTo(!f.path().equals("compose.yaml")));
 		assertThatThrownBy(() -> labFileService.revertLabFile(id, "web/index.html", userId))
 			.isInstanceOfSatisfying(ApiException.class, ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FILE_NOT_FOUND));
 

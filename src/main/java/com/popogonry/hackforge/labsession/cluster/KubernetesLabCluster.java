@@ -410,8 +410,8 @@ class KubernetesLabCluster implements LabCluster {
 	}
 
 	/**
-	 * {@code /app} 아래 파일마다 크기와 바이너리 여부(NUL 바이트를 지우면 크기가 줄어듦)를 한 줄씩 낸다.
-	 * 1MB를 넘는 파일은 바이너리인지 보지 않는다
+	 * {@code /app} 아래 파일마다 크기, 바이너리 여부(NUL 바이트를 지우면 크기가 줄어듦), 원본과 다른지(ADR 029)를 한 줄씩
+	 * 낸다. 1MB를 넘는 파일은 바이너리인지 보지 않는다. 원본에 없는 파일도 다른 것으로 본다
 	 */
 	@Override
 	public java.util.List<PodFile> listFiles(long sessionId) {
@@ -423,14 +423,17 @@ class KubernetesLabCluster implements LabCluster {
 					s=$(stat -c %s "./$f")
 					b=0
 					if [ "$s" -le 1048576 ] && [ "$(tr -d '\\000' < "./$f" | wc -c)" -lt "$s" ]; then b=1; fi
-					printf '%s\\t%s\\t%s\\n' "$s" "$b" "$f"
+					m=1
+					cmp -s "./$f" "/hackforge/original/$f" && m=0
+					printf '%s\\t%s\\t%s\\t%s\\n' "$s" "$b" "$m" "$f"
 				done
 				""");
 		java.util.List<PodFile> files = new java.util.ArrayList<>();
 		for (String line : output.split("\n")) {
-			String[] parts = line.split("\t", 3);
-			if (parts.length == 3 && parts[0].strip().matches("[0-9]+")) {
-				files.add(new PodFile(parts[2], Long.parseLong(parts[0].strip()), parts[1].equals("1")));
+			String[] parts = line.split("\t", 4);
+			if (parts.length == 4 && parts[0].strip().matches("[0-9]+")) {
+				files.add(new PodFile(parts[3], Long.parseLong(parts[0].strip()), parts[1].equals("1"),
+						parts[2].equals("1")));
 			}
 		}
 		return files;
@@ -439,15 +442,25 @@ class KubernetesLabCluster implements LabCluster {
 	/** 첫 줄은 상태, OK면 둘째 줄이 SHA-256이고 나머지가 base64 내용 */
 	@Override
 	public PodFileRead readFile(long sessionId, String path, int maxBytes) {
+		return readFileIn(sessionId, "/app", path, maxBytes);
+	}
+
+	@Override
+	public PodFileRead readOriginalFile(long sessionId, String path, int maxBytes) {
+		return readFileIn(sessionId, "/hackforge/original", path, maxBytes);
+	}
+
+	/** {@code dir}은 이 클래스가 정한 고정 경로만 받는다(스크립트에 글자 그대로 들어감) */
+	private PodFileRead readFileIn(long sessionId, String dir, String path, int maxBytes) {
 		return parseRead(fileScript(sessionId, """
-				cd /app || exit 1
+				cd %s || exit 1
 				%s
 				[ -f "$f" ] || { echo NOT_FOUND; exit 0; }
 				[ "$(stat -c %%s "$f")" -le %d ] || { echo TOO_LARGE; exit 0; }
 				echo OK
 				sha256sum "$f" | cut -d' ' -f1
 				base64 "$f"
-				""".formatted(pathVariable(path), maxBytes)));
+				""".formatted(dir, pathVariable(path), maxBytes)));
 	}
 
 	/**

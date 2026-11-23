@@ -51,14 +51,25 @@ public class LabFileService {
 		return labCluster.listFiles(id)
 			.stream()
 			.map(f -> new LabFileEntry(f.path(), f.size(), matches(readOnly, f.path()),
-					f.size() <= MAX_BYTES && !f.binary()))
+					f.size() <= MAX_BYTES && !f.binary(), f.modified()))
 			.toList();
 	}
 
 	public LabFileResponse getLabFile(long id, String path, long userId) {
 		LabSession lab = openable(id, userId);
 		requireValidPath(path);
-		PodFileRead read = labCluster.readFile(id, path, MAX_BYTES);
+		return editable(path, labCluster.readFile(id, path, MAX_BYTES), lab);
+	}
+
+	/** 원본({@code /hackforge/original})의 파일. 화면이 지금 코드와 비교한다(ADR 029). 활동으로 세지 않는다 */
+	public LabFileResponse getOriginalLabFile(long id, String path, long userId) {
+		LabSession lab = openable(id, userId);
+		requireValidPath(path);
+		return editable(path, labCluster.readOriginalFile(id, path, MAX_BYTES), lab);
+	}
+
+	/** 읽은 파일이 없으면 404, 1MB 초과나 바이너리면 409 */
+	private LabFileResponse editable(String path, PodFileRead read, LabSession lab) {
 		return switch (read.status()) {
 			case NOT_FOUND -> throw new ApiException(ErrorCode.FILE_NOT_FOUND);
 			case TOO_LARGE -> throw new ApiException(ErrorCode.FILE_NOT_EDITABLE);
