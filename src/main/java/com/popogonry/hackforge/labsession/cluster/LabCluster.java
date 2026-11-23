@@ -49,6 +49,9 @@ public interface LabCluster {
 	/** {@code maxBytes}를 넘으면 {@code TOO_LARGE}로 내용을 보내지 않는다. 경로는 호출하는 쪽이 검사한다 */
 	PodFileRead readFile(long sessionId, String path, int maxBytes);
 
+	/** 원본({@code /hackforge/original})의 파일을 읽는다. 규칙은 {@link #readFile}과 같다(ADR 029) */
+	PodFileRead readOriginalFile(long sessionId, String path, int maxBytes);
+
 	/** {@code baseSha256}이 null이 아니고 지금 해시와 다르면 저장하지 않는다. 없던 파일이면 지금 해시는 빈 문자열이다 */
 	PodFileWrite writeFile(long sessionId, String path, byte[] content, String baseSha256);
 

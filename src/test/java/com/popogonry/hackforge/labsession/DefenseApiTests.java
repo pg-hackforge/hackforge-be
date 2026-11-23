@@ -3,7 +3,9 @@ package com.popogonry.hackforge.labsession;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -252,6 +254,69 @@ class DefenseApiTests {
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("FILE_NOT_FOUND"));
 		assertThat(file(id, "web/src/index.php")).isEqualTo(INDEX);
+	}
+
+	/** 원본 읽기는 고친 파일을 건드리지 않고, 활동으로 세지 않는다(ADR 029) */
+	@Test
+	void readsOriginalWithoutChangingFile() throws Exception {
+		ApiClient kim = login("kim");
+		long id = session("kim", "DEFENSE");
+		cluster.files(id).put("web/src/index.php", "broken".getBytes(StandardCharsets.UTF_8));
+
+		kim.get(originalUrl(id, "web/src/index.php"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.path").value("web/src/index.php"))
+			.andExpect(jsonPath("$.content").value(INDEX))
+			.andExpect(jsonPath("$.sha256").value(sha(INDEX)))
+			.andExpect(jsonPath("$.readOnly").value(false));
+		assertThat(file(id, "web/src/index.php")).isEqualTo("broken");
+		assertThat(activityTracker.latest(id)).isEmpty();
+		kim.get(originalUrl(id, "compose.yaml")).andExpect(jsonPath("$.readOnly").value(true));
+	}
+
+	/** 원본에 없는 파일(학습자가 만든 파일)은 404, 1MB 초과·바이너리는 409, 공격 단계는 409 */
+	@Test
+	void originalFollowsFileReadRules() throws Exception {
+		ApiClient kim = login("kim");
+		long id = session("kim", "DEFENSE");
+		kim.put(fileUrl(id, "web/src/new.php"), saveJson("new", null)).andExpect(status().isOk());
+
+		kim.get(originalUrl(id, "web/src/new.php"))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("FILE_NOT_FOUND"));
+		for (String path : List.of("web/logo.png", "web/big.txt")) {
+			kim.get(originalUrl(id, path))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("FILE_NOT_EDITABLE"));
+		}
+		kim.get(originalUrl(id, "../etc/passwd")).andExpect(status().isBadRequest());
+		jdbcTemplate.update("update lab_sessions set stage = 'ATTACK' where id = ?", id);
+		kim.get(originalUrl(id, "web/src/index.php"))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("WRONG_LAB_STAGE"));
+	}
+
+	/** 목록의 modified: 원본과 내용이 다르거나 원본에 없으면 true. 되돌리면 false */
+	@Test
+	void listMarksFilesDifferentFromOriginal() throws Exception {
+		ApiClient kim = login("kim");
+		long id = session("kim", "DEFENSE");
+		kim.get("/api/labs/" + id + "/files").andExpect(jsonPath("$[*].modified", everyItem(is(false))));
+
+		kim.put(fileUrl(id, "web/src/index.php"), saveJson("fixed", null)).andExpect(status().isOk());
+		kim.put(fileUrl(id, "web/src/new.php"), saveJson("new", null)).andExpect(status().isOk());
+		kim.get("/api/labs/" + id + "/files")
+			.andExpect(jsonPath("$[?(@.path == 'web/src/index.php')].modified").value(true))
+			.andExpect(jsonPath("$[?(@.path == 'web/src/new.php')].modified").value(true))
+			.andExpect(jsonPath("$[?(@.path == 'compose.yaml')].modified").value(false));
+
+		kim.post("/api/labs/" + id + "/files/revert?path=web/src/index.php", null).andExpect(status().isOk());
+		kim.get("/api/labs/" + id + "/files")
+			.andExpect(jsonPath("$[?(@.path == 'web/src/index.php')].modified").value(false));
+	}
+
+	private static String originalUrl(long id, String path) {
+		return "/api/labs/" + id + "/files/original?path=" + path;
 	}
 
 	@Test

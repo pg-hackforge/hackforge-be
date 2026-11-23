@@ -126,8 +126,23 @@ public class FakeLabCluster implements LabCluster {
 		return files(sessionId).entrySet()
 			.stream()
 			.map(e -> new PodFile(e.getKey(), e.getValue().length,
-					e.getValue().length <= 1024 * 1024 && contains(e.getValue(), (byte) 0)))
+					e.getValue().length <= 1024 * 1024 && contains(e.getValue(), (byte) 0),
+					!java.util.Arrays.equals(e.getValue(),
+							originals.getOrDefault(sessionId, new java.util.TreeMap<>()).get(e.getKey()))))
 			.toList();
+	}
+
+	@Override
+	public PodFileRead readOriginalFile(long sessionId, String path, int maxBytes) {
+		throwIfFailing(sessionId);
+		byte[] content = originals.getOrDefault(sessionId, new java.util.TreeMap<>()).get(path);
+		if (content == null) {
+			return PodFileRead.of(PodFileRead.Status.NOT_FOUND);
+		}
+		if (content.length > maxBytes) {
+			return PodFileRead.of(PodFileRead.Status.TOO_LARGE);
+		}
+		return new PodFileRead(PodFileRead.Status.OK, content, sha256(content));
 	}
 
 	@Override

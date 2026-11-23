@@ -1063,6 +1063,47 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/labs/{id}/files/original:
+    get:
+      tags: [lab]
+      summary: 코드 파일의 원본 읽기
+      description: >-
+        문제의 원본(Challenge 이미지의 `/hackforge/original`)에 있는 이 파일의 내용과 SHA-256(hackforge-docs ADR 029).
+        `/app`의 파일은 바꾸지 않는다. 화면이 지금 코드와 줄 단위로 비교해 바뀐 줄을 표시할 때 쓴다.
+        규칙은 파일 읽기와 같고, 활동으로 집계하지 않는다
+      operationId: getOriginalLabFile
+      parameters:
+        - $ref: '#/components/parameters/LabSessionId'
+        - name: path
+          in: query
+          required: true
+          description: '`/app` 기준 상대 경로(예: `web/src/index.php`). `..`로 `/app` 밖을 가리키면 400'
+          schema:
+            type: string
+            maxLength: 500
+      responses:
+        '200':
+          description: 원본 파일
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabFileResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          description: 없는 세션(`LAB_NOT_FOUND`), 원본에 없는 파일(`FILE_NOT_FOUND`, 학습자가 새로 만든 파일)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: '`READY`가 아님(`LAB_NOT_READY`), `DEFENSE` 단계가 아님(`WRONG_LAB_STAGE`), 1MB 초과나 바이너리(`FILE_NOT_EDITABLE`)'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/labs/{id}/redeploys:
     post:
       tags: [lab]
@@ -1957,7 +1998,7 @@ components:
             $ref: '#/components/schemas/HintResponse'
     LabFileEntry:
       type: object
-      required: [path, size, readOnly, openable]
+      required: [path, size, readOnly, openable, modified]
       properties:
         path:
           description: '`/app` 기준 상대 경로'
@@ -1971,6 +2012,9 @@ components:
           type: boolean
         openable:
           description: 1MB 이하이고 바이너리가 아니면 true
+          type: boolean
+        modified:
+          description: 원본(`/hackforge/original`)과 내용이 다르거나 원본에 없는 파일이면 true(hackforge-docs ADR 029)
           type: boolean
     LabFileResponse:
       type: object
