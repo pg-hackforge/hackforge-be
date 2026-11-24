@@ -16,6 +16,7 @@ import com.popogonry.hackforge.challenge.domain.ChallengeMyStatus;
 import com.popogonry.hackforge.challenge.domain.ChallengeSort;
 import com.popogonry.hackforge.challenge.dto.ChallengeDetailResponse;
 import com.popogonry.hackforge.challenge.dto.ChallengePageResponse;
+import com.popogonry.hackforge.challenge.dto.MyActivityResponse;
 import com.popogonry.hackforge.challenge.dto.MyProgressResponse;
 import com.popogonry.hackforge.challenge.repository.ChallengeQueryRepository.Filter;
 import com.popogonry.hackforge.challenge.service.ChallengeService;
@@ -49,6 +50,12 @@ class ChallengeController {
 	@GetMapping("/api/me/progress")
 	MyProgressResponse getMyProgress(Authentication authentication) {
 		return challengeService.getMyProgress(userId(authentication));
+	}
+
+	/** 내 기록 분석. 판정은 화면이 하고 서버는 사실만 준다(ADR 030) */
+	@GetMapping("/api/me/activity")
+	MyActivityResponse getMyActivity(Authentication authentication) {
+		return challengeService.getMyActivity(userId(authentication));
 	}
 
 	private static long userId(Authentication authentication) {
