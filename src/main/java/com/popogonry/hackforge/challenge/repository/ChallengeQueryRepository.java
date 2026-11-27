@@ -15,6 +15,7 @@ import org.springframework.stereotype.Repository;
 import com.popogonry.hackforge.challenge.domain.ChallengeDifficulty;
 import com.popogonry.hackforge.challenge.domain.ChallengeMyStatus;
 import com.popogonry.hackforge.challenge.domain.ChallengeSort;
+import com.popogonry.hackforge.challenge.domain.ChallengeStatus;
 import com.popogonry.hackforge.challenge.dto.CategoryCountResponse;
 import com.popogonry.hackforge.challenge.dto.ChallengeCategoryResponse;
 import com.popogonry.hackforge.challenge.dto.ChallengeDetailResponse;
@@ -25,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 /**
  * 문제 목록의 검색, 필터, 정렬, 페이지, 필터별 개수(ADR 020).
  * 필터별 개수는 그 조건만 빼고 나머지 조건을 다시 적용해야 해서 SQL을 조건별로 조립한다.
+ * 예정 문제도 목록과 필터별 개수에 넣고, 어느 정렬이든 공개 문제 뒤에 둔다. 진행 요약은 공개 문제만 센다(ADR 031과 정정).
  * ponytail: 검색은 ILIKE 순차 비교. 문제가 수천 개로 늘어 느려지면 pg_trgm 색인을 더한다
  */
 @Repository
@@ -45,9 +47,17 @@ public class ChallengeQueryRepository {
 
 	private static final String COLUMNS = """
 			select c.id, c.slug, c.title, c.summary, cat.key as category_key, cat.name as category_name, c.difficulty,
-			  c.estimated_minutes, c.created_at > now() - interval '14 days' as is_new, """ + MY_STATUS + " as my_status";
+			  c.estimated_minutes, c.status,
+			  (c.status = 'PUBLISHED' and c.published_at > now() - interval '14 days') as is_new, """ + MY_STATUS
+			+ " as my_status";
 
-	private static final String NEWEST = "c.created_at desc, c.id desc";
+	/** 예정 문제를 공개 문제 뒤로. 어느 정렬이든 맨 앞에 둔다 */
+	private static final String PLANNED_LAST = "(c.status = 'PLANNED'), ";
+
+	/** 새로 추가된 순: 공개 문제는 공개 시각, 예정 문제(공개 시각 없음)는 등록 시각 */
+	private static final String ADDED_AT = "coalesce(c.published_at, c.created_at)";
+
+	private static final String NEWEST = ADDED_AT + " desc, c.id desc";
 
 	private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
@@ -86,7 +96,7 @@ public class ChallengeQueryRepository {
 				rs.getString("summary"),
 				new ChallengeCategoryResponse(rs.getString("category_key"), rs.getString("category_name")),
 				ChallengeDifficulty.valueOf(rs.getString("difficulty")), rs.getInt("estimated_minutes"),
-				rs.getBoolean("is_new"), ChallengeMyStatus.valueOf(rs.getString("my_status")));
+				ChallengeStatus.valueOf(rs.getString("status")), rs.getBoolean("is_new"), ChallengeMyStatus.valueOf(rs.getString("my_status")));
 	}
 
 	public long count(Filter filter) {
@@ -136,12 +146,12 @@ public class ChallengeQueryRepository {
 		return counts;
 	}
 
-	/** 분류별 전체·완료·끝내지 못한 수(ADR 027). 모든 분류를 표시 순서로 */
+	/** 분류별 전체·완료·끝내지 못한 수(ADR 027). 모든 분류를 표시 순서로. 공개 문제만 센다(ADR 031) */
 	public List<CategoryProgress> countProgressByCategory(long userId) {
 		String sql = "select cat.key, cat.name, count(c.id) as total,"
 				+ " count(c.id) filter (where " + MY_STATUS + " = 'COMPLETED') as completed,"
 				+ " count(c.id) filter (where " + MY_STATUS + " = 'UNFINISHED') as unfinished"
-				+ " from challenge_categories cat left join challenges c on c.category_key = cat.key"
+				+ " from challenge_categories cat left join challenges c on c.category_key = cat.key and c.status = 'PUBLISHED'"
 				+ " group by cat.key, cat.name, cat.display_order order by cat.display_order";
 		return namedParameterJdbcTemplate.query(sql, Map.of("userId", userId),
 				(rs, row) -> new CategoryProgress(rs.getString("key"), rs.getString("name"), rs.getLong("total"),
@@ -181,8 +191,8 @@ public class ChallengeQueryRepository {
 
 	private static String order(ChallengeSort sort, boolean reverse) {
 		String direction = reverse ? " desc, " : ", ";
-		return switch (sort) {
-			case NEWEST -> reverse ? "c.created_at, c.id" : NEWEST;
+		return PLANNED_LAST + switch (sort) {
+			case NEWEST -> reverse ? ADDED_AT + ", c.id" : NEWEST;
 			case DIFFICULTY -> "array_position(array['INTRO', 'BEGINNER', 'INTERMEDIATE', 'ADVANCED']::varchar[],"
 					+ " c.difficulty)" + direction + NEWEST;
 			case TIME -> "c.estimated_minutes" + direction + NEWEST;

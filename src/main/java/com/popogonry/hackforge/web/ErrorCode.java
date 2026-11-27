@@ -24,6 +24,7 @@ public enum ErrorCode {
 	INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "이미 처리된 회원이에요"),
 	ACCOUNT_NOT_APPROVED(HttpStatus.FORBIDDEN, "가입이 승인되면 실습을 시작할 수 있어요"),
 	CHALLENGE_NOT_FOUND(HttpStatus.NOT_FOUND, "문제를 찾을 수 없어요"),
+	CHALLENGE_NOT_PUBLISHED(HttpStatus.CONFLICT, "아직 준비 중인 문제예요"),
 	LAB_NOT_FOUND(HttpStatus.NOT_FOUND, "실습을 찾을 수 없어요"),
 	LAB_ALREADY_ACTIVE(HttpStatus.CONFLICT, "이미 진행 중인 실습이 있어요"),
 	LAB_NOT_READY(HttpStatus.CONFLICT, "실습 환경이 아직 준비되지 않았어요"),

@@ -120,6 +120,8 @@ class MyProgressApiTests {
 		endedSession("kim", done, true);
 		endedSession("kim", unfinished, false);
 		endedSession("lee", untouched, true);
+		// 예정 문제는 진행 요약에 세지 않는다(ADR 031)
+		TestChallenges.insertPlanned(jdbcTemplate, "sqli-planned", "sqli", "INTRO", 10, Duration.ZERO);
 
 		kim.get("/api/me/progress")
 			.andExpect(status().isOk())

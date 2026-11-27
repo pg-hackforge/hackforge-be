@@ -2,6 +2,7 @@ package com.popogonry.hackforge.challenge;
 
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -97,9 +98,9 @@ class ChallengeApiTests {
 			.andExpect(jsonPath("$.items[0].functionalTest").doesNotExist());
 	}
 
-	/** 처음 등록한 지 14일 안이면 새 문제 */
+	/** 처음 공개한 지 14일 안이면 새 문제 */
 	@Test
-	void newMeansRegisteredWithinFourteenDays() throws Exception {
+	void newMeansPublishedWithinFourteenDays() throws Exception {
 		add("recent", "최근", "sqli", "INTRO", 10, days(14).minusMinutes(5));
 		add("old", "오래됨", "sqli", "INTRO", 10, days(14).plusMinutes(5));
 
@@ -162,15 +163,15 @@ class ChallengeApiTests {
 
 		login("APPROVED").get("/api/challenges", "q", "웹", "category", "xss", "difficulty", "INTRO")
 			.andExpect(jsonPath("$.totalItems").value(1))
-			.andExpect(jsonPath("$.facets.categories", hasSize(12)))
+			.andExpect(jsonPath("$.facets.categories", hasSize(17)))
 			.andExpect(jsonPath("$.facets.categories[0].key").value("sqli"))
 			.andExpect(jsonPath("$.facets.categories[0].name").value("SQL Injection"))
 			.andExpect(jsonPath("$.facets.categories[0].count").value(1))
-			.andExpect(jsonPath("$.facets.categories[1].key").value("xss"))
-			.andExpect(jsonPath("$.facets.categories[1].count").value(1))
-			.andExpect(jsonPath("$.facets.categories[7].key").value("ssrf"))
-			.andExpect(jsonPath("$.facets.categories[7].count").value(0))
-			.andExpect(jsonPath("$.facets.categories[11].key").value("info-disclosure"))
+			.andExpect(jsonPath("$.facets.categories[2].key").value("xss"))
+			.andExpect(jsonPath("$.facets.categories[2].count").value(1))
+			.andExpect(jsonPath("$.facets.categories[10].key").value("ssrf"))
+			.andExpect(jsonPath("$.facets.categories[10].count").value(0))
+			.andExpect(jsonPath("$.facets.categories[16].key").value("info-disclosure"))
 			.andExpect(jsonPath("$.facets.difficulties[*].difficulty",
 					contains("INTRO", "BEGINNER", "INTERMEDIATE", "ADVANCED")))
 			.andExpect(jsonPath("$.facets.difficulties[*].count", contains(1, 0, 0, 1)));
@@ -227,6 +228,74 @@ class ChallengeApiTests {
 			.andExpect(jsonPath("$.items[*].slug",
 					contains("intro-long", "intro-mid", "beginner-short", "advanced-short")));
 		client.get("/api/challenges", "reverse", "maybe").andExpect(status().isBadRequest());
+	}
+
+	/** ADR 031. 예정 문제는 어느 정렬이든 공개 문제 뒤. 예정 문제끼리는 최근 등록 먼저 */
+	@Test
+	void plannedChallengesComeAfterPublishedInEverySort() throws Exception {
+		TestChallenges.insertPlanned(jdbcTemplate, "planned-old", "sqli", "INTRO", 10, days(3));
+		TestChallenges.insertPlanned(jdbcTemplate, "planned-new", "sqli", "ADVANCED", 90, Duration.ZERO);
+		add("published-hard", "a", "sqli", "ADVANCED", 60, days(5));
+		add("published-easy", "b", "sqli", "INTRO", 30, days(10));
+		ApiClient client = login("APPROVED");
+
+		client.get("/api/challenges")
+			.andExpect(jsonPath("$.items[*].slug",
+					contains("published-hard", "published-easy", "planned-new", "planned-old")))
+			.andExpect(jsonPath("$.items[*].status", contains("PUBLISHED", "PUBLISHED", "PLANNED", "PLANNED")))
+			.andExpect(jsonPath("$.items[2].isNew").value(false));
+		client.get("/api/challenges", "reverse", "true")
+			.andExpect(jsonPath("$.items[*].slug",
+					contains("published-easy", "published-hard", "planned-old", "planned-new")));
+		client.get("/api/challenges", "sort", "DIFFICULTY")
+			.andExpect(jsonPath("$.items[*].slug",
+					contains("published-easy", "published-hard", "planned-old", "planned-new")));
+		client.get("/api/challenges", "sort", "TIME", "reverse", "true")
+			.andExpect(jsonPath("$.items[*].slug",
+					contains("published-hard", "published-easy", "planned-new", "planned-old")));
+	}
+
+	/** ADR 031 정정. 필터별 개수에 예정 문제도 센다. 목록 줄 수와 맞춘다 */
+	@Test
+	void facetsCountPlannedChallenges() throws Exception {
+		add("sqli-login", "a", "sqli", "INTRO", 30, days(1));
+		TestChallenges.insertPlanned(jdbcTemplate, "sqli-search", "sqli", "INTERMEDIATE", 60, Duration.ZERO);
+
+		login("APPROVED").get("/api/challenges", "category", "sqli")
+			.andExpect(jsonPath("$.totalItems").value(2))
+			.andExpect(jsonPath("$.facets.categories[0].count").value(2))
+			.andExpect(jsonPath("$.facets.difficulties[*].count", contains(1, 0, 1, 0)))
+			.andExpect(jsonPath("$.facets.myStatuses[0].myStatus").value("NOT_STARTED"))
+			.andExpect(jsonPath("$.facets.myStatuses[0].count").value(2));
+	}
+
+	/** 등록은 오래전이어도 최근에 공개했으면 새 문제(예정 → 공개) */
+	@Test
+	void newIsCountedFromPublishedAt() throws Exception {
+		long id = TestChallenges.insertPlanned(jdbcTemplate, "was-planned", "sqli", "INTRO", 10, days(30));
+		jdbcTemplate.update("""
+				update challenges set status = 'PUBLISHED', published_at = now(), image = 'x:1', description = 'd',
+				  solution = 's', attack_check = 'exit 1', exploit = 'exit 1', functional_test = 'exit 0',
+				  max_defense_attempts = 5 where id = ?""", id);
+		add("older", "a", "sqli", "INTRO", 10, days(2));
+
+		login("APPROVED").get("/api/challenges")
+			.andExpect(jsonPath("$.items[*].slug", contains("was-planned", "older")))
+			.andExpect(jsonPath("$.items[0].isNew").value(true));
+	}
+
+	/** 예정 문제 상세는 조회되고 설명은 null */
+	@Test
+	void plannedChallengeDetailHasNoDescription() throws Exception {
+		long id = TestChallenges.insertPlanned(jdbcTemplate, "idor-memo", "access-control", "BEGINNER", 40, Duration.ZERO);
+
+		login("APPROVED").get("/api/challenges/" + id)
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("PLANNED"))
+			.andExpect(jsonPath("$.summary").value("idor-memo 요약"))
+			.andExpect(jsonPath("$.estimatedMinutes").value(40))
+			.andExpect(jsonPath("$.isNew").value(false))
+			.andExpect(jsonPath("$.description").value(nullValue()));
 	}
 
 	/** 20개씩. 범위를 넘은 페이지는 빈 목록이고 개수는 그대로 */

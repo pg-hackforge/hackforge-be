@@ -3,6 +3,8 @@ package com.popogonry.hackforge;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
+
 import javax.sql.DataSource;
 
 import org.flywaydb.core.Flyway;
@@ -255,13 +257,40 @@ class LabSchemaTests {
 			.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
-	/** 처음 분류 12개가 표시 순서대로 들어 있다(ADR 020) */
+	/** 분류 17개가 비슷한 주제끼리 표시 순서대로 들어 있다(ADR 020, ADR 032) */
 	@Test
 	void categoriesAreSeededInDisplayOrder() {
 		var keys = jdbcTemplate.queryForList("select key from challenge_categories order by display_order", String.class);
 
-		assertThat(keys).containsExactly("sqli", "xss", "access-control", "auth-session", "command-injection",
-				"path-traversal", "file-upload", "ssrf", "csrf", "xxe", "deserialization", "info-disclosure");
+		assertThat(keys).containsExactly("sqli", "nosql-injection", "xss", "ssti", "access-control", "auth-session",
+				"business-logic", "command-injection", "path-traversal", "file-upload", "ssrf", "csrf", "xxe",
+				"deserialization", "prototype-pollution", "misconfiguration", "info-disclosure");
+	}
+
+	/** ADR 031. 기존 문제는 공개 상태이고 공개 시각이 있다 */
+	@Test
+	void challengesArePublishedByDefault() {
+		assertThat(jdbcTemplate.queryForObject("select status from challenges where id = ?", String.class, challengeId))
+			.isEqualTo("PUBLISHED");
+		assertThat(jdbcTemplate.queryForObject("select published_at is not null from challenges where id = ?",
+				Boolean.class, challengeId))
+			.isTrue();
+	}
+
+	/** 예정 문제는 실습 칸이 비어도 되고, 공개하려면 모두 채워야 한다 */
+	@Test
+	void publishedChallengeMustHaveLabContent() {
+		long planned = TestChallenges.insertPlanned(jdbcTemplate, "planned", "sqli", "INTRO", 10, Duration.ZERO);
+
+		assertThatThrownBy(() -> jdbcTemplate.update(
+				"update challenges set status = 'PUBLISHED', published_at = now() where id = ?", planned))
+			.isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> jdbcTemplate.update("update challenges set image = null where id = ?", challengeId))
+			.isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> jdbcTemplate.update("update challenges set published_at = null where id = ?", challengeId))
+			.isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> jdbcTemplate.update("update challenges set status = 'DRAFT' where id = ?", challengeId))
+			.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -326,11 +355,16 @@ class LabSchemaTests {
 			.load()
 			.migrate();
 
-		String slug = jdbcTemplate.queryForObject("select slug from dev_seed_check.challenges", String.class);
+		String slug = jdbcTemplate.queryForObject("select slug from dev_seed_check.challenges where status = 'PUBLISHED'",
+				String.class);
+		// 예정 문제 18개(ADR 031, hackforge-docs roadmap.md "문제 목록")는 migration이 넣는다
+		Long planned = jdbcTemplate.queryForObject(
+				"select count(*) from dev_seed_check.challenges where status = 'PLANNED' and image is null", Long.class);
 		Long hints = jdbcTemplate.queryForObject("select count(*) from dev_seed_check.challenge_hints", Long.class);
 
 		assertThat(slug).isEqualTo("test-web");
 		assertThat(hints).isEqualTo(6);
+		assertThat(planned).isEqualTo(18);
 		jdbcTemplate.execute("drop schema dev_seed_check cascade");
 	}
 
