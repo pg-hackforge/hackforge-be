@@ -1734,7 +1734,7 @@ components:
     ChallengeFacetsResponse:
       type: object
       description: >-
-        필터별 문제 수. 개수가 0인 항목도 넣는다. 예정 문제는 세지 않는다(ADR 031).
+        필터별 문제 수. 개수가 0인 항목도 넣는다. 목록과 맞추려고 예정 문제도 센다(ADR 031 정정).
         한 조건의 개수는 그 조건을 뺀 나머지 조건(검색어 포함)을 적용해 센다.
         예를 들어 난이도 `INTRO`를 골랐어도 분류별 개수는 입문 문제만, 난이도별 개수는 난이도 조건 없이 센다
       required: [categories, difficulties, myStatuses]
