@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hackforge API
-  version: 0.12.0
+  version: 0.13.0
   description: >-
     hackforge-be와 hackforge-fe 사이의 API spec.
     API를 바꿀 때는 구현보다 이 파일을 먼저 PR로 올려 합의한다.
@@ -187,7 +187,7 @@ paths:
       summary: 내 진행 요약
       description: >-
         홈의 내 진행(hackforge-docs ADR 027). 전체 문제 수, 완료한 문제 수, 끝내지 못한 문제 수, 분류별 전체·완료 수.
-        문제별 상태는 `ChallengeMyStatus`와 같은 규칙으로 센다
+        문제별 상태는 `ChallengeMyStatus`와 같은 규칙으로 센다. 공개 문제만 센다(예정 문제 제외, ADR 031)
       operationId: getMyProgress
       security:
         - sessionCookie: []
@@ -462,6 +462,8 @@ paths:
       description: >-
         검색, 필터, 정렬, 페이지(20개). 같은 조건의 여러 값은 "또는", 다른 조건끼리는 "그리고"로 묶는다.
         범위를 넘은 페이지는 빈 `items`를 반환하고 개수 값은 그대로다.
+        예정(`PLANNED`) 문제도 목록에 넣고, 어느 정렬이든 공개 문제 뒤에 온다(hackforge-docs ADR 031).
+        예정 문제끼리도 같은 기준으로 정렬하되, 새로 추가된 순 대신 등록 순(최근 등록 먼저)을 쓴다.
         승인 대기·거절 계정도 조회 가능. 승인 여부는 실습 시작 시점에만 확인한다
       operationId: listChallenges
       security:
@@ -541,7 +543,9 @@ paths:
     get:
       tags: [lab]
       summary: 문제 조회
-      description: 목록 항목에 설명 전문(Markdown)을 더해 반환한다. 승인 대기·거절 계정도 조회 가능
+      description: >-
+        목록 항목에 설명 전문(Markdown)을 더해 반환한다. 예정 문제도 조회되고 설명은 `null`이다.
+        승인 대기·거절 계정도 조회 가능
       operationId: getChallenge
       security:
         - sessionCookie: []
@@ -632,7 +636,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '409':
-          description: 진행 중 세션이 이미 있음(`LAB_ALREADY_ACTIVE`). 클라이언트는 `GET /api/labs/current`로 기존 세션을 조회한다
+          description: >-
+            진행 중 세션이 이미 있음(`LAB_ALREADY_ACTIVE`). 클라이언트는 `GET /api/labs/current`로 기존 세션을 조회한다.
+            또는 공개되지 않은 문제(`CHALLENGE_NOT_PUBLISHED`, 예정 문제). 세션을 만들지 않는다
           content:
             application/problem+json:
               schema:
@@ -1636,9 +1642,17 @@ components:
       type: string
       description: '`INTRO` 입문, `BEGINNER` 초급, `INTERMEDIATE` 중급, `ADVANCED` 고급. 이 순서로 쉽다'
       enum: [INTRO, BEGINNER, INTERMEDIATE, ADVANCED]
+    ChallengeStatus:
+      type: string
+      description: >-
+        문제 상태(hackforge-docs ADR 031). `PUBLISHED` 공개, `PLANNED` 예정(목록에 미리 보이지만 실습을 시작할 수 없음).
+        v1.2에 값이 늘어날 수 있다
+      enum: [PLANNED, PUBLISHED]
     ChallengeSort:
       type: string
-      description: '`NEWEST` 새로 추가된 순, `DIFFICULTY` 난이도 낮은 순, `TIME` 예상 시간 짧은 순. 값이 같으면 새로 추가된 순'
+      description: >-
+        `NEWEST` 새로 추가된 순(공개 시각 기준), `DIFFICULTY` 난이도 낮은 순, `TIME` 예상 시간 짧은 순.
+        값이 같으면 새로 추가된 순
       enum: [NEWEST, DIFFICULTY, TIME]
     ChallengeCategoryResponse:
       type: object
@@ -1654,7 +1668,7 @@ components:
     ChallengeResponse:
       type: object
       description: 문제 목록 항목. 설명 전문, 힌트, 해답, 검증 스크립트는 넣지 않는다
-      required: [id, slug, title, summary, category, difficulty, estimatedMinutes, isNew, myStatus]
+      required: [id, slug, title, summary, category, difficulty, estimatedMinutes, status, isNew, myStatus]
       properties:
         id:
           type: integer
@@ -1676,9 +1690,11 @@ components:
           type: integer
           format: int32
           minimum: 1
+        status:
+          $ref: '#/components/schemas/ChallengeStatus'
         isNew:
           type: boolean
-          description: 처음 등록한 지 14일 안이면 true
+          description: 처음 공개한 지 14일 안이면 true. 예정 문제는 false
         myStatus:
           $ref: '#/components/schemas/ChallengeMyStatus'
     ChallengeDetailResponse:
@@ -1689,8 +1705,8 @@ components:
           required: [description]
           properties:
             description:
-              type: string
-              description: 문제 설명(Markdown). Challenge 저장소의 `meta/description.md`
+              type: [string, 'null']
+              description: 문제 설명(Markdown). Challenge 저장소의 `meta/description.md`. 예정 문제는 `null`
     ChallengePageResponse:
       type: object
       required: [items, page, size, totalItems, totalPages, facets]
@@ -1718,7 +1734,7 @@ components:
     ChallengeFacetsResponse:
       type: object
       description: >-
-        필터별 문제 수. 개수가 0인 항목도 넣는다.
+        필터별 문제 수. 개수가 0인 항목도 넣는다. 목록과 맞추려고 예정 문제도 센다(ADR 031 정정).
         한 조건의 개수는 그 조건을 뺀 나머지 조건(검색어 포함)을 적용해 센다.
         예를 들어 난이도 `INTRO`를 골랐어도 분류별 개수는 입문 문제만, 난이도별 개수는 난이도 조건 없이 센다
       required: [categories, difficulties, myStatuses]
@@ -1778,7 +1794,7 @@ components:
         totalChallenges:
           type: integer
           format: int64
-          description: 전체 문제 수(`GET /api/me/progress`와 같은 기준)
+          description: 전체 문제 수(`GET /api/me/progress`와 같은 기준, 공개 문제만)
         categories:
           type: array
           description: 분류 표시 순서. 문제가 없는 분류도 넣는다
@@ -2361,6 +2377,7 @@ components:
             - INTERNAL_ERROR
             - ACCOUNT_NOT_APPROVED
             - CHALLENGE_NOT_FOUND
+            - CHALLENGE_NOT_PUBLISHED
             - LAB_NOT_FOUND
             - LAB_ALREADY_ACTIVE
             - LAB_NOT_READY
