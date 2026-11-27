@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.popogonry.hackforge.challenge.domain.Challenge;
+import com.popogonry.hackforge.challenge.domain.ChallengeStatus;
 import com.popogonry.hackforge.challenge.repository.ChallengeRepository;
 import com.popogonry.hackforge.labsession.cluster.LabProperties;
 import com.popogonry.hackforge.labsession.domain.LabEndReason;
@@ -89,6 +90,9 @@ public class LabSessionService {
 		}
 		Challenge challenge = challengeRepository.findById(challengeId)
 			.orElseThrow(() -> new ApiException(ErrorCode.CHALLENGE_NOT_FOUND));
+		if (challenge.getStatus() != ChallengeStatus.PUBLISHED) {
+			throw new ApiException(ErrorCode.CHALLENGE_NOT_PUBLISHED);
+		}
 		labSessionRepository.lockForStart(START_LOCK_KEY);
 		if (labSessionRepository.existsByUserIdAndStatusNotIn(userId, LabStatus.ENDED)) {
 			throw new ApiException(ErrorCode.LAB_ALREADY_ACTIVE);

@@ -148,6 +148,18 @@ class LabSessionApiTests {
 			.andExpect(jsonPath("$.code").value("CHALLENGE_NOT_FOUND"));
 	}
 
+	/** ADR 031. 예정 문제는 시작을 거절하고 세션을 만들지 않는다 */
+	@Test
+	void plannedChallengeCannotStart() throws Exception {
+		long planned = TestChallenges.insertPlanned(jdbcTemplate, "idor-memo", "access-control", "BEGINNER", 40,
+				Duration.ZERO);
+
+		approved("kim").post("/api/labs", startJson(planned))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("CHALLENGE_NOT_PUBLISHED"));
+		assertThat(activeCount()).isZero();
+	}
+
 	@Test
 	void missingChallengeIdIsValidationFailed() throws Exception {
 		approved("kim").post("/api/labs", "{}")

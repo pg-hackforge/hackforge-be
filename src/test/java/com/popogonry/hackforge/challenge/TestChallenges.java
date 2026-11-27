@@ -30,14 +30,25 @@ public final class TestChallenges {
 		}
 	}
 
-	/** 목록 테스트용. createdAgo만큼 전에 처음 등록한 문제 */
+	/** 목록 테스트용. createdAgo만큼 전에 등록하고 바로 공개한 문제 */
 	public static long insertListed(JdbcTemplate jdbcTemplate, String slug, String title, String summary, String category,
 			String difficulty, int minutes, Duration createdAgo) {
+		Timestamp at = Timestamp.from(Instant.now().minus(createdAgo));
 		return jdbcTemplate.queryForObject("""
 				insert into challenges (slug, title, image, description, solution, attack_check, exploit, functional_test,
-				  max_defense_attempts, category_key, difficulty, estimated_minutes, summary, created_at)
-				values (?, ?, 'x:1', ?, '해답', 'exit 1', 'exit 1', 'exit 0', 5, ?, ?, ?, ?, ?) returning id
-				""", Long.class, slug, title, title + " 설명", category, difficulty, minutes, summary,
+				  max_defense_attempts, category_key, difficulty, estimated_minutes, summary, created_at, published_at)
+				values (?, ?, 'x:1', ?, '해답', 'exit 1', 'exit 1', 'exit 0', 5, ?, ?, ?, ?, ?, ?) returning id
+				""", Long.class, slug, title, title + " 설명", category, difficulty, minutes, summary, at, at);
+	}
+
+	/** 예정 문제(ADR 031). 목록 정보만 있고 이미지, 설명, 스크립트, 해답이 없다. createdAgo만큼 전에 등록 */
+	public static long insertPlanned(JdbcTemplate jdbcTemplate, String slug, String category, String difficulty,
+			int minutes, Duration createdAgo) {
+		return jdbcTemplate.queryForObject("""
+				insert into challenges (slug, title, category_key, difficulty, estimated_minutes, summary, status,
+				  published_at, created_at)
+				values (?, ?, ?, ?, ?, ?, 'PLANNED', null, ?) returning id
+				""", Long.class, slug, slug + " 제목", category, difficulty, minutes, slug + " 요약",
 				Timestamp.from(Instant.now().minus(createdAgo)));
 	}
 
