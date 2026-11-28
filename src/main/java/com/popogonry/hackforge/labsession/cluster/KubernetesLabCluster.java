@@ -350,7 +350,10 @@ class KubernetesLabCluster implements LabCluster {
 
 	/**
 	 * kubectl exec -i lab -n lab-<id> -- sh -c 'cd /app && timeout <초> sh' < 스크립트 와 같다(ADR 014).
-	 * stdin을 닫은 것이 Pod까지 전해지는지는 exec 프로토콜 버전에 따라 달라서, 스크립트 끝에 {@code exit}를 붙여 sh가 입력을 더 기다리지 않게 한다.
+	 * sh는 stdin이 닫혀야(EOF) 끝난다. stdin 닫기는 exec 프로토콜 v5({@code v5.channel.k8s.io}, Kubernetes 1.30부터)에서만 Pod까지
+	 * 전해지고, v4로 붙으면 모든 스크립트가 timeout으로 끝난다. 스크립트 끝에 {@code exit}를 붙이면 안 된다. sh가 stdin 닫기 frame을
+	 * 받기 전에 끝나면 API server가 읽지 않은 데이터가 남은 연결을 닫으며 RST를 보내고, 그 사이 도착한 stdout과 exit code가 버려져
+	 * 연결 오류가 된다(hackforge-be #60, 개발 PC에서 exec 약 90번에 1번).
 	 * 스크립트 안의 timeout이 먼저 끝내고, 그래도 끝나지 않으면 여기서 5초 더 기다린 뒤 끊는다
 	 */
 	@Override
@@ -382,7 +385,7 @@ class KubernetesLabCluster implements LabCluster {
 			Thread outReader = Thread.ofVirtual().start(() -> stdout.readFrom(process.getInputStream()));
 			Thread.ofVirtual().start(() -> new TailBuffer(0).readFrom(process.getErrorStream()));
 			try (OutputStream stdin = process.getOutputStream()) {
-				stdin.write((script + "\nexit\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+				stdin.write((script + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
 				stdin.flush();
 			}
 			if (!process.waitFor(timeout.plusSeconds(5).toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)) {
