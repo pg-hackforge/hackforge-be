@@ -129,6 +129,14 @@ class KubernetesLabClusterTests {
 		ScriptResult slow = labCluster.runScript(SESSION, "sleep 30", Duration.ofSeconds(2));
 		assertThat(slow.timedOut()).isTrue();
 		assertThat(Duration.between(start, Instant.now())).isLessThan(Duration.ofSeconds(15));
+		// sh는 stdin이 닫혀야 끝난다. 스크립트 안에서 stdin을 읽는 명령도 EOF를 받는다(exec 프로토콜 v5)
+		ScriptResult eof = labCluster.runScript(SESSION, "cat\necho eof", Duration.ofSeconds(10));
+		assertThat(eof.timedOut()).isFalse();
+		assertThat(eof.output()).contains("eof");
+		// hackforge-be #60. 빨리 끝나는 exec를 이어서 해도 연결 오류가 나지 않는다. 고치기 전에는 약 90번에 1번 났다
+		for (int i = 0; i < 200; i++) {
+			assertThat(labCluster.runScript(SESSION, "true", Duration.ofSeconds(10)).exitCode()).as("exec " + i).isZero();
+		}
 		assertThatThrownBy(() -> http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/")).build(),
 				HttpResponse.BodyHandlers.ofString())).isInstanceOf(java.io.IOException.class);
 
